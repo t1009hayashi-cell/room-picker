@@ -1,0 +1,96 @@
+import { DATA_DIR, loadConfig } from './config.js';
+import { rebuildIndex, readSales, readSnapshot, writeSales, writeSnapshot } from './io.js';
+import { buildDailySnapshot, makeLiveFetcher, type GenreFetcher } from './pipeline.js';
+import { RakutenClient } from './rakuten/client.js';
+import { buildMockRanking, buildMockSearch, mockFetchResult } from './rakuten/mock.js';
+import { collectSaleInputs, detectSales, mergeSales } from './sales.js';
+import type { NormalizedItem } from './types.js';
+import { addDays, nowJstIso, toJstDateKey } from './util/datetime.js';
+
+interface Args {
+  mock: boolean;
+  date: string | null;
+  dataDir: string;
+}
+
+function parseArgs(argv: string[]): Args {
+  const args: Args = { mock: false, date: null, dataDir: DATA_DIR };
+  for (const arg of argv) {
+    if (arg === '--mock') args.mock = true;
+    else if (arg.startsWith('--date=')) args.date = arg.slice('--date='.length);
+    else if (arg.startsWith('--data-dir=')) args.dataDir = arg.slice('--data-dir='.length);
+  }
+  return args;
+}
+
+function log(message: string): void {
+  process.stdout.write(`${message}\n`);
+}
+
+async function main(): Promise<void> {
+  const args = parseArgs(process.argv.slice(2));
+  const config = await loadConfig();
+
+  const now = args.date ? new Date(`${args.date}T06:00:00+09:00`) : new Date();
+  const date = toJstDateKey(now);
+  const applicationId = process.env.RAKUTEN_APPLICATION_ID ?? null;
+
+  log(`room-assist: ${date} の抽出を開始します（${args.mock ? 'モック' : '実API'}）`);
+
+  let fetcher: GenreFetcher;
+  if (args.mock) {
+    fetcher = {
+      ranking: async (genre) => mockFetchResult(buildMockRanking(genre, { now })),
+      search: async (genre) => mockFetchResult(buildMockSearch(genre, { now })),
+    };
+  } else {
+    if (!applicationId) {
+      throw new Error(
+        '環境変数 RAKUTEN_APPLICATION_ID が未設定です。実APIを叩かずに試す場合は --mock を付けてください',
+      );
+    }
+    const client = new RakutenClient({
+      applicationId,
+      affiliateId: process.env.RAKUTEN_AFFILIATE_ID ?? null,
+      intervalMs: Number(process.env.RAKUTEN_REQUEST_INTERVAL_MS ?? 1100),
+      onLog: log,
+    });
+    fetcher = makeLiveFetcher(client, config);
+  }
+
+  const prev = await readSnapshot(args.dataDir, addDays(date, -1));
+  if (!prev) log('前日のスナップショットがありません。順位変動なしとして処理します（仕様書 6.4）');
+
+  const snapshot = await buildDailySnapshot({
+    config,
+    fetcher,
+    prev,
+    now,
+    applicationId,
+    generatedBy: args.mock ? 'mock' : 'live',
+    onLog: log,
+  });
+
+  await writeSnapshot(args.dataDir, snapshot);
+
+  const allItems: NormalizedItem[] = snapshot.genres.flatMap((g) => g.items);
+  const detected = detectSales(collectSaleInputs(allItems), config.scoring, now);
+  const previousSales = await readSales(args.dataDir);
+  await writeSales(args.dataDir, {
+    updatedAt: nowJstIso(now),
+    sales: mergeSales(previousSales?.sales ?? [], detected),
+  });
+
+  const index = await rebuildIndex(args.dataDir);
+
+  const kept = allItems.filter((i) => !i.excluded).length;
+  const warnings = snapshot.genres.flatMap((g) => g.warnings);
+  log(`完了: ${allItems.length}件取得 / ${kept}件が条件通過 / セール${detected.length}件を自動検出`);
+  log(`data/index.json: ${index.dates.length}日分`);
+  if (warnings.length > 0) log(`警告 ${warnings.length}件:\n  - ${warnings.join('\n  - ')}`);
+}
+
+main().catch((err: unknown) => {
+  process.stderr.write(`${(err as Error).stack ?? String(err)}\n`);
+  process.exitCode = 1;
+});

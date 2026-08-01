@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="theme-color" content="#111318" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="ROOM投稿支援" />
+    <title>ROOM投稿支援</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+    <link rel="icon" href="./icons/icon-192.png" />
+    <link rel="stylesheet" href="./css/style.css" />
+  </head>
+  <body>
+    <div id="a2hs" class="a2hs" hidden>
+      <div class="a2hs__body">
+        <strong>ホーム画面に追加してください</strong>
+        <p>
+          Safariのまま使い続けると、投稿ログや設定がiOSに削除されることがあります。
+          共有ボタン → 「ホーム画面に追加」で常駐させてください。
+        </p>
+        <div class="a2hs__actions">
+          <button type="button" data-action="a2hs-later" class="btn btn--ghost">あとで</button>
+          <button type="button" data-action="a2hs-dismiss" class="btn">追加した</button>
+        </div>
+      </div>
+    </div>
+
+    <header class="appbar">
+      <button type="button" class="appbar__back" data-action="back" hidden aria-label="戻る">‹</button>
+      <h1 class="appbar__title" id="appbar-title">カレンダー</h1>
+      <div class="appbar__right" id="appbar-right"></div>
+    </header>
+
+    <main id="view" class="view" aria-live="polite">
+      <p class="loading">読み込み中…</p>
+    </main>
+
+    <nav class="tabbar">
+      <a class="tabbar__item" href="#/calendar" data-tab="calendar">
+        <span class="tabbar__icon">▦</span><span>カレンダー</span>
+      </a>
+      <a class="tabbar__item" href="#/analytics" data-tab="analytics">
+        <span class="tabbar__icon">▤</span><span>分析</span>
+      </a>
+      <a class="tabbar__item" href="#/settings" data-tab="settings">
+        <span class="tabbar__icon">⚙</span><span>設定</span>
+      </a>
+    </nav>
+
+    <div id="toast" class="toast" hidden></div>
+
+    <script type="module" src="./js/main.js"></script>
+  </body>
+</html>

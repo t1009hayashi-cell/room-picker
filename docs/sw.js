@@ -1,0 +1,96 @@
+/*
+ * Service Worker。
+ * アプリシェルはキャッシュ優先、data/*.json はネットワーク優先＋失敗時キャッシュとする。
+ * 日次JSONは日付ごとに新規ファイルなので、一度取得したものは書き換わらない前提でよい。
+ * ただし当日分は Actions の再実行で更新されうるため、常にネットワークを先に試す。
+ */
+const VERSION = 'v1';
+const SHELL_CACHE = `room-shell-${VERSION}`;
+const DATA_CACHE = `room-data-${VERSION}`;
+
+const SHELL_ASSETS = [
+  './',
+  './index.html',
+  './manifest.webmanifest',
+  './css/style.css',
+  './js/main.js',
+  './js/lib/store.js',
+  './js/lib/dataLoader.js',
+  './js/lib/format.js',
+  './js/lib/schedule.js',
+  './js/lib/filters.js',
+  './js/lib/catalog.js',
+  './js/lib/commentText.js',
+  './js/lib/prompt.js',
+  './js/lib/csv.js',
+  './js/lib/match.js',
+  './js/lib/aggregate.js',
+  './js/views/calendar.js',
+  './js/views/dayList.js',
+  './js/views/analytics.js',
+  './js/views/settings.js',
+  './icons/icon-192.png',
+  './icons/icon-512.png',
+];
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(SHELL_CACHE).then((cache) => cache.addAll(SHELL_ASSETS)).then(() => self.skipWaiting()),
+  );
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches
+      .keys()
+      .then((keys) =>
+        Promise.all(keys.filter((k) => k !== SHELL_CACHE && k !== DATA_CACHE).map((k) => caches.delete(k))),
+      )
+      .then(() => self.clients.claim()),
+  );
+});
+
+self.addEventListener('fetch', (event) => {
+  const { request } = event;
+  if (request.method !== 'GET') return;
+
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return;
+
+  if (url.pathname.includes('/data/')) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(DATA_CACHE).then((cache) => cache.put(request, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(request).then((cached) => cached ?? Response.error())),
+    );
+    return;
+  }
+
+  // アプリシェルは stale-while-revalidate。
+  // cache-first にすると、コードを直しても VERSION を上げるまで端末に更新が届かない。
+  // キャッシュを即返しつつ裏で取り直すことで、オフライン起動と更新の両方を satisfy する。
+  event.respondWith(
+    caches.open(SHELL_CACHE).then(async (cache) => {
+      const cached = await cache.match(request);
+      const network = fetch(request)
+        .then((response) => {
+          if (response.ok) cache.put(request, response.clone());
+          return response;
+        })
+        .catch(() => null);
+
+      if (cached) {
+        event.waitUntil(network);
+        return cached;
+      }
+      const response = await network;
+      return response ?? Response.error();
+    }),
+  );
+});

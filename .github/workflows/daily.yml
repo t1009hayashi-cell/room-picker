@@ -1,0 +1,62 @@
+name: daily-fetch
+
+# 仕様書 3章: cron は UTC 指定。0 21 * * * = JST 06:00
+# GitHub Actions の cron は数十分遅延することがある（仕様書 12章で許容済み）
+on:
+  schedule:
+    - cron: '0 21 * * *'
+  workflow_dispatch:
+    inputs:
+      date:
+        description: '抽出日 (YYYY-MM-DD)。空なら当日'
+        required: false
+        type: string
+
+concurrency:
+  group: daily-fetch
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - name: 単体テスト
+        run: node --test "dist/test/*.test.js"
+
+      - name: 日次JSONを生成
+        env:
+          RAKUTEN_APPLICATION_ID: ${{ secrets.RAKUTEN_APPLICATION_ID }}
+          RAKUTEN_AFFILIATE_ID: ${{ secrets.RAKUTEN_AFFILIATE_ID }}
+          RAKUTEN_REQUEST_INTERVAL_MS: '1100'
+        run: |
+          if [ -n "${{ inputs.date }}" ]; then
+            node dist/src/index.js --date=${{ inputs.date }}
+          else
+            node dist/src/index.js
+          fi
+
+      - name: コミット
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add docs/data
+          if git diff --cached --quiet; then
+            echo '変更なし'
+          else
+            git commit -m "data: $(TZ=Asia/Tokyo date +%Y-%m-%d) の抽出結果"
+            git push
+          fi

@@ -1,0 +1,21 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npx tsc -p tsconfig.json --noEmit
+      - run: npm test
+      - name: モックで抽出パイプラインが通ることを確認
+        run: node dist/src/index.js --mock --data-dir=./tmp-data

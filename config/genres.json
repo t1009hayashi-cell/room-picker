@@ -1,0 +1,12 @@
+{
+  "_note": "commissionRate は API が affiliateRate を返さなかった場合のフォールバック値。API 値を常に優先する（仕様書 4.4）。",
+  "genres": [
+    { "genreId": "100227", "genreName": "食品", "commissionRate": 0.04, "enabled": true },
+    { "genreId": "551167", "genreName": "スイーツ・お菓子", "commissionRate": 0.04, "enabled": true },
+    { "genreId": "100316", "genreName": "水・ソフトドリンク", "commissionRate": 0.04, "enabled": true },
+    { "genreId": "100356", "genreName": "コーヒー", "commissionRate": 0.04, "enabled": true },
+    { "genreId": "100533", "genreName": "キッズ・ベビー・マタニティ", "commissionRate": 0.04, "enabled": true },
+    { "genreId": "558944", "genreName": "キッチン用品・食器", "commissionRate": 0.03, "enabled": true },
+    { "genreId": "215783", "genreName": "日用品雑貨", "commissionRate": 0.03, "enabled": true }
+  ]
+}

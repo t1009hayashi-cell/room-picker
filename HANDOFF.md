@@ -14,7 +14,7 @@
 | リポジトリ | https://github.com/t1009hayashi-cell/room-picker （Public） |
 | 公開URL | https://t1009hayashi-cell.github.io/room-picker/ |
 | 自動実行 | 毎朝 06:00 JST（`.github/workflows/daily.yml`） |
-| テスト | 123件すべて合格（`npm test`） |
+| テスト | 126件すべて合格（`npm test`。2026-08-02 実測） |
 | 初回の実データ取得 | 2026-08-02 に成功。398件取得 / 166件が条件通過 / セール2件を自動検出 |
 
 GitHub Secrets には次の3つが登録済み。

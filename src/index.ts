@@ -7,6 +7,12 @@ import { collectSaleInputs, detectSales, mergeSales } from './sales.js';
 import type { NormalizedItem } from './types.js';
 import { addDays, nowJstIso, toJstDateKey } from './util/datetime.js';
 
+/**
+ * 楽天ウェブサービスのアプリ設定「許可されたウェブサイト」に登録した公開URL。
+ * リポジトリを移した場合は環境変数 RAKUTEN_SITE_URL で上書きする。
+ */
+const DEFAULT_SITE_URL = 'https://t1009hayashi-cell.github.io/room-picker/';
+
 interface Args {
   mock: boolean;
   date: string | null;
@@ -63,10 +69,14 @@ async function main(): Promise<void> {
         '環境変数 RAKUTEN_APPLICATION_ID が未設定です。実APIを叩かずに試す場合は --mock を付けてください',
       );
     }
+    const siteUrl = process.env.RAKUTEN_SITE_URL?.trim() || DEFAULT_SITE_URL;
+    log(`許可されたウェブサイトとして ${siteUrl} を名乗ります`);
+
     const client = new RakutenClient({
       applicationId,
       affiliateId: process.env.RAKUTEN_AFFILIATE_ID?.trim() || null,
       intervalMs: Number(process.env.RAKUTEN_REQUEST_INTERVAL_MS ?? 1100),
+      siteUrl,
       onLog: log,
     });
     fetcher = makeLiveFetcher(client, config);

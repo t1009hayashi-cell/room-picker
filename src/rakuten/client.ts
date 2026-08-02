@@ -10,6 +10,12 @@ export interface ClientOptions {
   intervalMs?: number;
   /** formatVersion。2 を指定すると Item のネストが外れる（仕様書 4.1） */
   formatVersion?: 1 | 2;
+  /**
+   * 楽天ウェブサービスのアプリ設定「許可されたウェブサイト」に登録した自サイトのURL。
+   * この仕組みはブラウザからの利用を前提としており、サーバー間通信では参照元が付かないため
+   * 「specify valid applicationId」で弾かれる。自サイトのための取得であることを明示する。
+   */
+  siteUrl?: string | null;
   fetchImpl?: typeof fetch;
   onLog?: (message: string) => void;
 }
@@ -31,6 +37,7 @@ export class RakutenClient {
   private readonly affiliateId: string | null;
   private readonly intervalMs: number;
   private readonly formatVersion: 1 | 2;
+  private readonly siteUrl: string | null;
   private readonly fetchImpl: typeof fetch;
   private readonly onLog: (message: string) => void;
   private lastRequestAt = 0;
@@ -43,6 +50,7 @@ export class RakutenClient {
     this.affiliateId = options.affiliateId ?? null;
     this.intervalMs = Math.max(1000, options.intervalMs ?? 1100);
     this.formatVersion = options.formatVersion ?? 2;
+    this.siteUrl = options.siteUrl?.trim() || null;
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.onLog = options.onLog ?? (() => {});
   }
@@ -72,12 +80,26 @@ export class RakutenClient {
     // アプリIDをログに残さない
     this.onLog(`GET ${endpoint} ${JSON.stringify(params)}`);
 
-    const res = await this.fetchImpl(url, { headers: { 'User-Agent': 'room-assist/1.0' } });
+    const headers: Record<string, string> = { 'User-Agent': 'room-assist/1.0' };
+    if (this.siteUrl) {
+      // 「許可されたウェブサイト」に登録した自サイトのための取得であることを明示する
+      headers.Referer = this.siteUrl;
+      try {
+        headers.Origin = new URL(this.siteUrl).origin;
+      } catch {
+        // URLとして壊れている場合は Origin を付けない
+      }
+    }
+
+    const res = await this.fetchImpl(url, { headers });
     if (!res.ok) {
       const body = await res.text().catch(() => '');
-      throw new Error(
-        `楽天API エラー: ${res.status} ${res.statusText} ${body.slice(0, 200).replace(this.applicationId, '***')}`,
-      );
+      const detail = body.slice(0, 200).replace(this.applicationId, '***');
+      const hint =
+        res.status === 400 && body.includes('applicationId')
+          ? `\nヒント: 楽天ウェブサービスのアプリ設定「許可されたウェブサイト」に ${this.siteUrl ?? '(未設定)'} が登録されているか確認してください`
+          : '';
+      throw new Error(`楽天API エラー: ${res.status} ${res.statusText} ${detail}${hint}`);
     }
     const json = (await res.json()) as RakutenRawResponse;
     return { items: extractItems(json), title: typeof json.title === 'string' ? json.title : '' };

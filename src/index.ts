@@ -36,9 +36,20 @@ async function main(): Promise<void> {
   // GitHub Secrets への貼り付け時に末尾改行や前後の空白が混入することがある。
   // 混入したままURLのクエリパラメータに使うと、楽天APIが「specify valid applicationId」
   // として拒否する（実際にCIで発生した）。防御的にtrimし、空文字はnull扱いにする。
-  const applicationId = process.env.RAKUTEN_APPLICATION_ID?.trim() || null;
+  const rawApplicationId = process.env.RAKUTEN_APPLICATION_ID ?? '';
+  const applicationId = rawApplicationId.trim() || null;
 
   log(`room-assist: ${date} の抽出を開始します（${args.mock ? 'モック' : '実API'}）`);
+  if (!args.mock) {
+    // 値そのものは一切ログに出さない（Publicリポジトリのため）。
+    // 長さ・空白混入・引用符混入の有無だけを安全に確認する
+    log(
+      `RAKUTEN_APPLICATION_ID診断: 生の長さ=${rawApplicationId.length}文字 / trim後=${applicationId?.length ?? 0}文字 / ` +
+        `前後に空白または改行あり=${rawApplicationId !== rawApplicationId.trim()} / ` +
+        `引用符を含む=${/^["']|["']$/.test(rawApplicationId)} / ` +
+        `半角英数とハイフンのみで構成=${applicationId ? /^[A-Za-z0-9-]+$/.test(applicationId) : false}`,
+    );
+  }
 
   let fetcher: GenreFetcher;
   if (args.mock) {

@@ -35,21 +35,32 @@ const SORTS = [
   { id: 'hot', label: 'hot順', compare: (a, b) => b.hotScore - a.hotScore },
   { id: 'reward', label: '想定報酬順', compare: (a, b) => (b.estimatedReward ?? 0) - (a.estimatedReward ?? 0) },
   { id: 'point', label: 'ポイント倍率順', compare: (a, b) => (b.pointRate ?? 0) - (a.pointRate ?? 0) },
-  { id: 'unposted', label: '未投稿を先に', compare: null }, // 投稿状態が要るので下で個別に扱う
 ];
 let sortId = 'hot';
 
-function sortItems(items, posted) {
+/**
+ * 投稿の状態での絞り込み。
+ * 「予約のみ」が主役で、投稿予定日に開いて予約したものだけを見るための入口。
+ */
+const STATUS_FILTERS = [
+  { id: 'all', label: 'すべて', test: () => true },
+  { id: 'reserved', label: '予約のみ', test: (item, state) => Boolean(state.reserved[item.itemCode]) },
+  { id: 'unposted', label: '未投稿のみ', test: (item, state) => !state.posted[item.itemCode] },
+  { id: 'posted', label: '投稿済みのみ', test: (item, state) => Boolean(state.posted[item.itemCode]) },
+];
+let statusId = 'all';
+
+function applyStatus(items, state) {
+  const filter = STATUS_FILTERS.find((f) => f.id === statusId) ?? STATUS_FILTERS[0];
+  if (filter.id === 'all') return items;
+  return items.filter((item) => filter.test(item, state));
+}
+
+function sortItems(items) {
   const sort = SORTS.find((s) => s.id === sortId) ?? SORTS[0];
   const tieBreak = (a, b) => b.hotScore - a.hotScore || a.itemCode.localeCompare(b.itemCode);
-
-  const compare =
-    sort.id === 'unposted'
-      ? (a, b) => Number(Boolean(posted[a.itemCode])) - Number(Boolean(posted[b.itemCode])) || tieBreak(a, b)
-      : (a, b) => sort.compare(a, b) || tieBreak(a, b);
-
   // 元の配列はカタログが持っているものなので壊さない
-  return [...items].sort(compare);
+  return [...items].sort((a, b) => sort.compare(a, b) || tieBreak(a, b));
 }
 
 /**
@@ -87,13 +98,14 @@ export async function renderDayList(root, dateKey) {
   setAppBar(`${dateKey}（${weekdayOf(dateKey)}）`, { back: true });
 
   // 日付・モード・絞り込み・並び順が変わったら先頭から描き直す
-  const key = `${dateKey}|${mode}|${[...activeChips].sort().join(',')}|${showExcluded}|${sortId}`;
+  const key = `${dateKey}|${mode}|${[...activeChips].sort().join(',')}|${showExcluded}|${sortId}|${statusId}`;
   if (key !== lastKey) {
     lastKey = key;
     visibleCount = PAGE_SIZE;
   }
 
-  const items = sortItems(applyChips(itemsForDate(dateKey), activeChips), state.posted);
+  const items = sortItems(applyStatus(applyChips(itemsForDate(dateKey), activeChips), state));
+  const reservedCount = itemsForDate(dateKey).filter((item) => state.reserved[item.itemCode]).length;
   const totalReward = items.reduce((sum, item) => sum + (item.estimatedReward ?? 0), 0);
   const shown = items.slice(0, visibleCount);
   const rest = items.length - shown.length;
@@ -109,22 +121,38 @@ export async function renderDayList(root, dateKey) {
   const sortOptions = SORTS.map(
     (s) => `<option value="${s.id}" ${s.id === sortId ? 'selected' : ''}>${s.label}</option>`,
   ).join('');
+  const statusOptions = STATUS_FILTERS.map(
+    (f) =>
+      `<option value="${f.id}" ${f.id === statusId ? 'selected' : ''}>${f.label}${f.id === 'reserved' && reservedCount > 0 ? `（${reservedCount}）` : ''}</option>`,
+  ).join('');
 
   root.innerHTML = `
     <div class="chips">${chips}${excludedChip}</div>
-    <label class="row small muted" style="margin-bottom:8px">
-      <span>並び順</span>
-      <select id="day-sort" style="width:auto;flex:1">${sortOptions}</select>
-    </label>
+    <div class="row small muted" style="margin-bottom:8px">
+      <label class="row" style="flex:1;gap:4px"><span>表示</span>
+        <select id="day-status" style="width:auto;flex:1">${statusOptions}</select>
+      </label>
+      <label class="row" style="flex:1;gap:4px"><span>並び順</span>
+        <select id="day-sort" style="width:auto;flex:1">${sortOptions}</select>
+      </label>
+    </div>
     <p class="small muted">${mode === 'discovered' ? '発見日' : '投稿予定日'}モード / ${items.length}件 / 想定報酬合計 ${fmtYen(totalReward)}</p>
     ${shopConcentrationNotice(items)}
     <div id="day-items">
-      ${items.length === 0 ? '<p class="empty">この日に該当する商品はありません。</p>' : shown.map((item) => cardHtml(item, dateKey, state)).join('')}
+      ${items.length === 0 ? `<p class="empty">${emptyMessage()}</p>` : shown.map((item) => cardHtml(item, dateKey, state)).join('')}
     </div>
     ${rest > 0 ? `<button class="btn btn--block" data-more>さらに表示（残り${rest}件）</button>` : ''}
   `;
 
   bind(root, dateKey);
+}
+
+/** 0件のときの案内。絞り込みのせいで0件なのか、その日に候補が無いのかを言い分ける */
+function emptyMessage() {
+  if (statusId === 'reserved') return 'この日に予約した商品はありません。商品の「予約する」を押すとここに集まります。';
+  if (statusId === 'posted') return 'この日に投稿済みの商品はありません。';
+  if (statusId === 'unposted') return '未投稿の商品はありません。';
+  return 'この日に該当する商品はありません。';
 }
 
 /**
@@ -142,6 +170,7 @@ function shopConcentrationNotice(items) {
 
 function cardHtml(item, dateKey, state) {
   const posted = Boolean(state.posted[item.itemCode]);
+  const reserved = Boolean(state.reserved[item.itemCode]);
   const angle = state.postedAngle[item.itemCode] ?? item.draftComments?.[0]?.angle ?? null;
   const draft = draftFor(item, angle);
   const saved = state.comments[item.itemCode];
@@ -171,6 +200,7 @@ function cardHtml(item, dateKey, state) {
     outOfStock ? '<span class="badge badge--down">在庫なし</span>' : '',
     item.pointRate >= 5 ? `<span class="badge badge--warn">ポイント${item.pointRate}倍</span>` : '',
     isLimitedTimePrice(item) ? '<span class="badge badge--rate">期間限定価格</span>' : '',
+    reserved ? '<span class="badge badge--reserved">予約済み</span>' : '',
     posted ? '<span class="badge badge--posted">投稿済み</span>' : '',
     `<span class="badge">hot ${item.hotScore}</span>`,
   ]
@@ -237,11 +267,22 @@ function cardHtml(item, dateKey, state) {
     <p class="small muted" data-counter="${escapeHtml(item.itemCode)}"></p>
 
     <div class="row" style="margin-top:8px">
-      <input type="date" value="${escapeHtml(scheduled)}" data-schedule="${escapeHtml(item.itemCode)}" style="width:auto" />
-      <button class="btn" data-copy="${escapeHtml(item.itemCode)}">AI用プロンプト</button>
+      <button class="btn btn--primary" data-copy-comment="${escapeHtml(item.itemCode)}">投稿文をコピー</button>
       <button class="btn" data-copy-url="${escapeHtml(item.itemCode)}" ${item.itemUrl ? '' : 'disabled'}>URLをコピー</button>
       <a class="btn" href="${escapeHtml(item.itemUrl)}" target="_blank" rel="noopener noreferrer">楽天で開く</a>
     </div>
+    <div class="row" style="margin-top:6px">
+      <input type="date" value="${escapeHtml(scheduled)}" data-schedule="${escapeHtml(item.itemCode)}" style="width:auto" />
+      <button class="btn" data-copy="${escapeHtml(item.itemCode)}">AI用プロンプト</button>
+    </div>
+
+    ${
+      posted
+        ? ''
+        : `<button class="btn ${reserved ? '' : 'btn--primary'} btn--block" data-reserve="${escapeHtml(item.itemCode)}">
+            ${reserved ? '予約を取り消す' : 'この投稿文で予約する'}
+          </button>`
+    }
     <button class="btn ${posted ? '' : 'btn--primary'} btn--block" data-post="${escapeHtml(item.itemCode)}">
       ${posted ? '投稿済みを取り消す' : '投稿済みにする'}
     </button>
@@ -273,6 +314,11 @@ function bind(root, dateKey) {
 
   root.querySelector('#day-sort')?.addEventListener('change', (event) => {
     sortId = event.target.value;
+    renderDayList(root, dateKey);
+  });
+
+  root.querySelector('#day-status')?.addEventListener('change', (event) => {
+    statusId = event.target.value;
     renderDayList(root, dateKey);
   });
 
@@ -331,6 +377,41 @@ function bind(root, dateKey) {
         s.aiCopied[code] = true;
       });
       toast(ok ? 'AI用プロンプトをコピーしました' : 'コピーに失敗しました');
+    });
+  });
+
+  root.querySelectorAll('[data-copy-comment]').forEach((el) => {
+    el.addEventListener('click', async () => {
+      const code = el.dataset.copyComment;
+      // 画面で編集した内容をそのままコピーする（保存待ちの内容がズレないように）
+      const area = root.querySelector(`[data-comment="${CSS.escape(code)}"]`);
+      const text = area?.value ?? '';
+      if (!text.trim()) return toast('投稿文が空です');
+      store.setComment(code, text, store.getState().postedAngle[code]);
+      const ok = await copyToClipboard(text);
+      toast(ok ? '投稿文をコピーしました。楽天ROOMに貼り付けてください' : 'コピーに失敗しました');
+    });
+  });
+
+  root.querySelectorAll('[data-reserve]').forEach((el) => {
+    el.addEventListener('click', () => {
+      const code = el.dataset.reserve;
+      const state = store.getState();
+      if (state.reserved[code]) {
+        store.setReserved(code, false);
+        toast('予約を取り消しました');
+        renderDayList(root, dateKey);
+        return;
+      }
+
+      const area = root.querySelector(`[data-comment="${CSS.escape(code)}"]`);
+      const text = area?.value ?? '';
+      if (!text.trim()) return toast('投稿文を入力してから予約してください');
+
+      const scheduledDate = state.schedule[code] ?? findItem(code)?.scheduledDate ?? dateKey;
+      store.setReserved(code, true, { scheduledDate, text, angle: state.postedAngle[code] });
+      toast(`${scheduledDate} に予約しました。当日この日付を開くと「表示: 予約のみ」で出せます`);
+      renderDayList(root, dateKey);
     });
   });
 

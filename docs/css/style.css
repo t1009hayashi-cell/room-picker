@@ -341,6 +341,13 @@ thead th {
   color: #04240f;
 }
 
+/* 予約済み: 投稿済み（緑）と紛れないよう、これからやることの色にする */
+.badge--reserved {
+  background: var(--warn);
+  border-color: var(--warn);
+  color: #2b1d00;
+}
+
 /* ---- chips ---- */
 .chips {
   display: flex;
@@ -482,6 +489,11 @@ thead th {
 
 .cal__count--posted {
   background: color-mix(in srgb, var(--ok) 28%, transparent);
+  color: var(--text);
+}
+
+.cal__count--reserved {
+  background: color-mix(in srgb, var(--warn) 32%, transparent);
   color: var(--text);
 }
 

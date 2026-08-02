@@ -50,7 +50,7 @@ export async function renderCalendar(root) {
       // 発見日モードの byDiscovered は除外品も含む（仕様書6.1で残す設計のため）。
       // 日別リストの既定表示と件数・想定報酬合計が食い違わないよう、ここでも除外品を落とす。
       const items = (source?.get(cell.dateKey) ?? []).filter((item) => !item.userExcluded);
-      const sum = summarizeDay(items, state.posted);
+      const sum = summarizeDay(items, state.posted, state.reserved);
       const daySales = salesOnDate(app.sales, cell.dateKey);
       const classes = [
         'cal__cell',
@@ -63,6 +63,8 @@ export async function renderCalendar(root) {
 
       const counts = [];
       if (sum.todo > 0) counts.push(`<span class="cal__count cal__count--todo">${sum.todo}</span>`);
+      // 予約は「その日にやることがある」印なので、投稿済みより先に見えるようにする
+      if (sum.reserved > 0) counts.push(`<span class="cal__count cal__count--reserved">予${sum.reserved}</span>`);
       if (sum.posted > 0) counts.push(`<span class="cal__count cal__count--posted">済${sum.posted}</span>`);
       if (sum.rateBoosted > 0) counts.push(`<span class="cal__count cal__count--rate">UP</span>`);
 

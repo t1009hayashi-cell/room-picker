@@ -53,17 +53,20 @@ function decorate(item, sales, settings, schedule) {
 }
 
 /** カレンダーの日付セルに出す集計（仕様書 8.1） */
-export function summarizeDay(items, postedMap) {
+export function summarizeDay(items, postedMap, reservedMap = {}) {
   let todo = 0;
   let posted = 0;
+  let reserved = 0;
   let rateBoosted = 0;
   let reward = 0;
 
   for (const item of items) {
     if (postedMap[item.itemCode]) posted += 1;
     else todo += 1;
+    // 予約は「投稿文を書いて当日に備えた」印。投稿すると解除されるので posted とは重ならない
+    if (reservedMap[item.itemCode]) reserved += 1;
     if (item.isRateBoosted) rateBoosted += 1;
     reward += item.estimatedReward ?? 0;
   }
-  return { total: items.length, todo, posted, rateBoosted, reward };
+  return { total: items.length, todo, posted, reserved, rateBoosted, reward };
 }

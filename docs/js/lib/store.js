@@ -30,6 +30,11 @@ function emptyState() {
     comments: {},
     postedAngle: {},
     posted: {},
+    /**
+     * 予約投稿。投稿文を先に書いておき、投稿予定日に開いてコピペするための目印。
+     * itemCode -> { reservedAt, scheduledDate }
+     */
+    reserved: {},
     /** AI用プロンプトをコピーした商品。投稿ログの usedAiGeneration に使う */
     aiCopied: {},
     posts: [],
@@ -56,6 +61,8 @@ function migrate(raw) {
     comments: raw.comments ?? {},
     postedAngle: raw.postedAngle ?? {},
     posted: raw.posted ?? {},
+    // 予約投稿は後から足した項目。既存の保存データには入っていない
+    reserved: raw.reserved ?? {},
     aiCopied: raw.aiCopied ?? {},
     posts: Array.isArray(raw.posts) ? raw.posts : [],
     results: Array.isArray(raw.results) ? raw.results : [],
@@ -153,10 +160,34 @@ export function isPosted(itemCode) {
   return Boolean(getState().posted[itemCode]);
 }
 
+/**
+ * 予約投稿の登録／解除（投稿文を先に書いておき、投稿予定日にコピペするための目印）。
+ * 投稿文もここで一緒に保存する。予約したのに本文が残っていない、という状態を作らないため。
+ */
+export function setReserved(itemCode, on, { scheduledDate = null, text = null, angle = null } = {}) {
+  update((s) => {
+    if (!on) {
+      delete s.reserved[itemCode];
+      return;
+    }
+    s.reserved[itemCode] = { reservedAt: new Date().toISOString(), scheduledDate };
+    if (text) {
+      s.comments[itemCode] = text;
+      if (angle) s.postedAngle[itemCode] = angle;
+    }
+  });
+}
+
+export function isReserved(itemCode) {
+  return Boolean(getState().reserved[itemCode]);
+}
+
 /** 投稿ログ（仕様書 5.4）。「投稿済みにする」を押した時点で1レコード確定保存する */
 export function addPost(record) {
   update((s) => {
     s.posted[record.itemCode] = true;
+    // 投稿すれば予約は済んだことになる。残すと「予約のみ」に投稿済みが混ざって使えなくなる
+    delete s.reserved[record.itemCode];
     s.posts.push(record);
   });
 }

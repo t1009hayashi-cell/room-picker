@@ -9,7 +9,8 @@
 // オフライン用に貯めた日次JSONを捨てずに端末へ更新を届けられる。
 // v2: 長押しメニュー抑止とレイアウト修正（2026-08-02）
 // v3: ジャンル名検索・絞り込み追加・並び順・URLコピー（2026-08-03）
-const SHELL_VERSION = 'v3';
+// v4: 予約投稿・投稿文コピー・表示の絞り込み（2026-08-03）
+const SHELL_VERSION = 'v4';
 const DATA_VERSION = 'v1';
 const SHELL_CACHE = `room-shell-${SHELL_VERSION}`;
 const DATA_CACHE = `room-data-${DATA_VERSION}`;

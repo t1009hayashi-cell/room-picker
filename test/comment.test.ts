@@ -112,6 +112,15 @@ describe('補助関数', () => {
     assert.equal(extractNoun('謎の商品', ''), '毎日使うもの');
   });
 
+  it('1文字のカテゴリ語が複合語の一部に誤マッチしない', () => {
+    // 実データで「吸水」から「水」を拾い「水の買い出し」という投稿文になった
+    assert.equal(extractNoun('珪藻土バスマット 速乾 吸水 日本製', '日用品雑貨'), '日用品雑貨');
+    assert.equal(extractNoun('防水シーツ 2枚組', '日用品雑貨'), '日用品雑貨');
+    // 独立した語として現れる場合は拾う
+    assert.equal(extractNoun('天然水 2L×12本 ケース', '水・ソフトドリンク'), '水');
+    assert.equal(extractNoun('水 500ml×24本', '水・ソフトドリンク'), '水');
+  });
+
   it('数量表記から1個あたり単価を出す', () => {
     assert.deepEqual(extractUnitPrice('500ml×24本 まとめ買い', 3480), { count: 24, unit: '本', unitPrice: 145 });
     assert.equal(extractUnitPrice('2kg 送料無料', 5398), null);

@@ -122,10 +122,31 @@ export function seasonOf(month: number): 'spring' | 'summer' | 'autumn' | 'winte
   return 'winter';
 }
 
+/**
+ * 1文字のカテゴリ語が複合語の一部に誤マッチするのを防ぐ。
+ * 例: 珪藻土バスマットの「吸水」から「水」を拾って「水の買い出し」という投稿文になった。
+ * 語の直前が漢字・ひらがな・カタカナの場合は複合語の一部とみなして採用しない。
+ */
+function matchesAsWord(itemName: string, word: string): boolean {
+  if (Array.from(word).length > 1) return itemName.includes(word);
+
+  const compoundChar = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}ー]/u;
+  let from = 0;
+  for (;;) {
+    const index = itemName.indexOf(word, from);
+    if (index === -1) return false;
+    const before = index === 0 ? '' : itemName[index - 1]!;
+    const after = itemName[index + word.length] ?? '';
+    // 前後どちらかが漢字・かなだと複合語の可能性が高い（吸水・水圧・水着など）
+    if (!compoundChar.test(before) && !compoundChar.test(after)) return true;
+    from = index + 1;
+  }
+}
+
 /** 商品名からカテゴリ語を取り出す。見つからなければジャンル名の先頭セグメントを使う */
 export function extractNoun(itemName: string, genreName: string): string {
   for (const word of CATEGORY_WORDS) {
-    if (itemName.includes(word)) return word;
+    if (matchesAsWord(itemName, word)) return word;
   }
   const segment = genreName.split(/[・\/]/)[0]?.trim();
   return segment && segment !== '' ? segment : '毎日使うもの';

@@ -4,9 +4,14 @@
  * 日次JSONは日付ごとに新規ファイルなので、一度取得したものは書き換わらない前提でよい。
  * ただし当日分は Actions の再実行で更新されうるため、常にネットワークを先に試す。
  */
-const VERSION = 'v1';
-const SHELL_CACHE = `room-shell-${VERSION}`;
-const DATA_CACHE = `room-data-${VERSION}`;
+// アプリシェルとデータで世代を分ける。
+// コードを直したときは SHELL_VERSION だけ上げれば、
+// オフライン用に貯めた日次JSONを捨てずに端末へ更新を届けられる。
+// v2: 長押しメニュー抑止とレイアウト修正（2026-08-02）
+const SHELL_VERSION = 'v2';
+const DATA_VERSION = 'v1';
+const SHELL_CACHE = `room-shell-${SHELL_VERSION}`;
+const DATA_CACHE = `room-data-${DATA_VERSION}`;
 
 const SHELL_ASSETS = [
   './',

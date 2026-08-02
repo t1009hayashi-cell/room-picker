@@ -154,6 +154,11 @@ function bind(root) {
   grid.addEventListener('pointercancel', cancelPress);
   grid.addEventListener('pointerleave', cancelPress);
 
+  // 長押しの想定報酬ポップアップと、ブラウザ標準のコンテキストメニューが競合するため抑止する。
+  grid.addEventListener('contextmenu', (event) => {
+    if (event.target.closest('.cal__cell')) event.preventDefault();
+  });
+
   grid.addEventListener('click', (event) => {
     const cell = event.target.closest('.cal__cell');
     if (!cell || longPressed) return;

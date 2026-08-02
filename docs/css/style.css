@@ -49,6 +49,11 @@ body {
   font-size: 15px;
   line-height: 1.6;
   overscroll-behavior-y: none;
+  /* iOS Safari はアドレスバーの伸縮でビューポート高が変わる。
+     dvh（動的ビューポート単位）で高さを確定させ、コンテンツが短い画面でも
+     背景と固定バーの位置が画面ごとにぶれないようにする。vh は非対応環境の保険。 */
+  min-height: 100vh;
+  min-height: 100dvh;
 }
 
 /* ---- app bar ---- */
@@ -60,7 +65,11 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+  /* color-mix() / backdrop-filter を解釈しない環境ではバーが透明になり
+     「バーが表示されない」ように見えるため、不透明色を先に置いて保険にする。 */
+  background: var(--bg);
   background: color-mix(in srgb, var(--bg) 88%, transparent);
+  -webkit-backdrop-filter: saturate(180%) blur(12px);
   backdrop-filter: saturate(180%) blur(12px);
   border-bottom: 1px solid var(--line);
   z-index: 20;
@@ -99,6 +108,10 @@ body {
     calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 24px);
   max-width: 720px;
   margin: 0 auto;
+  /* 候補0件の日など内容が短い画面でも、必ず画面全体を占める高さにする。
+     box-sizing: border-box なので上下パディング（＝バー分の余白）を含む。 */
+  min-height: 100vh;
+  min-height: 100dvh;
 }
 
 .tabbar {
@@ -107,7 +120,9 @@ body {
   height: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
   padding-bottom: env(safe-area-inset-bottom);
   display: flex;
+  background: var(--bg);
   background: color-mix(in srgb, var(--bg) 92%, transparent);
+  -webkit-backdrop-filter: saturate(180%) blur(12px);
   backdrop-filter: saturate(180%) blur(12px);
   border-top: 1px solid var(--line);
   z-index: 20;
@@ -123,6 +138,10 @@ body {
   font-size: 10px;
   color: var(--text-dim);
   text-decoration: none;
+  /* タブを長押ししたときに「新規タブで開く」等を出さない */
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .tabbar__item[aria-current='page'] {
@@ -389,7 +408,11 @@ thead th {
   gap: 2px;
   font-size: 11px;
   cursor: pointer;
+  /* iOS Safari 17未満は接頭辞付きしか解釈しないため、長押しで選択メニューが出る */
+  -webkit-user-select: none;
   user-select: none;
+  /* 長押しでiOS標準のコンテキストメニューを出さない（8.1の長押しポップアップと競合するため） */
+  -webkit-touch-callout: none;
   overflow: hidden;
 }
 

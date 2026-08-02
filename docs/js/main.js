@@ -95,6 +95,9 @@ function setActiveTab(path) {
 export async function render() {
   const { path, param } = parseRoute();
   setActiveTab(path);
+  // 前の画面のスクロール位置が残ると、内容の短い画面で
+  // 表示位置がずれたように見えるため先頭に戻す。
+  window.scrollTo(0, 0);
 
   if (app.error) {
     viewEl.innerHTML = `<div class="card"><strong>データを読み込めませんでした</strong><p class="small muted">${escapeHtml(app.error)}</p><button class="btn btn--block" data-action="retry">再試行</button></div>`;

@@ -17,12 +17,14 @@ interface Args {
   mock: boolean;
   date: string | null;
   dataDir: string;
+  skipIfExists: boolean;
 }
 
 function parseArgs(argv: string[]): Args {
-  const args: Args = { mock: false, date: null, dataDir: DATA_DIR };
+  const args: Args = { mock: false, date: null, dataDir: DATA_DIR, skipIfExists: false };
   for (const arg of argv) {
     if (arg === '--mock') args.mock = true;
+    else if (arg === '--skip-if-exists') args.skipIfExists = true;
     else if (arg.startsWith('--date=')) args.date = arg.slice('--date='.length);
     else if (arg.startsWith('--data-dir=')) args.dataDir = arg.slice('--data-dir='.length);
   }
@@ -42,6 +44,15 @@ async function main(): Promise<void> {
   // Secrets への貼り付けで前後に空白や改行が混入することがあるため防御的に trim する
   const applicationId = process.env.RAKUTEN_APPLICATION_ID?.trim() || null;
   const accessKey = process.env.RAKUTEN_ACCESS_KEY?.trim() || null;
+
+  // GitHub Actions の定期実行は大幅に遅れたりスキップされたりする（実績: 9時間44分遅れ）。
+  // 保険として朝の時間帯に複数回仕掛けるため、すでにその日の分があれば何もせずに終える。
+  // これが無いと、成功済みの日に再取得して楽天APIを無駄に叩き、fetchedAt だけが違う
+  // 差分を毎回コミットしてしまう。
+  if (args.skipIfExists && (await readSnapshot(args.dataDir, date))) {
+    log(`${date} のデータはすでにあります。取得をスキップします`);
+    return;
+  }
 
   log(`room-assist: ${date} の抽出を開始します（${args.mock ? 'モック' : '実API'}）`);
 

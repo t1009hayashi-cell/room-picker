@@ -6,6 +6,7 @@
 const memory = new Map();
 let indexPromise = null;
 let salesPromise = null;
+let genreMasterPromise = null;
 
 async function getJson(path) {
   if (memory.has(path)) return memory.get(path);
@@ -41,6 +42,21 @@ export function loadSales() {
     });
   }
   return salesPromise;
+}
+
+/**
+ * ジャンルマスタ（設定画面でジャンルを名前で選ぶための一覧）。
+ * genre-master ワークフローが未実行のうちは存在しないので、
+ * 失敗しても画面を止めず空で返し、呼び出し側が手入力に切り替えられるようにする。
+ */
+export function loadGenreMaster() {
+  if (!genreMasterPromise) {
+    genreMasterPromise = getJson('./data/genre-master.json').catch(() => {
+      genreMasterPromise = null;
+      return { updatedAt: null, maxLevel: 0, genres: [] };
+    });
+  }
+  return genreMasterPromise;
 }
 
 export function loadSnapshot(dateKey) {
@@ -87,4 +103,5 @@ export function resetCache() {
   memory.clear();
   indexPromise = null;
   salesPromise = null;
+  genreMasterPromise = null;
 }

@@ -1,0 +1,57 @@
+name: genre-master
+
+# 設定画面でジャンルを名前で選ぶための一覧（docs/data/genre-master.json）を作る。
+# ジャンルツリーはめったに変わらないので日次バッチには入れず、週1回と手動実行にする。
+# 0 20 * * 0 = 日曜 UTC 20:00 = 月曜 JST 05:00（日次バッチの06:00とぶつけない）
+on:
+  schedule:
+    - cron: '0 20 * * 0'
+  workflow_dispatch:
+    inputs:
+      maxLevel:
+        description: '取得する階層の深さ（既定 2）。深くするほどリクエスト数と時間が増える'
+        required: false
+        default: '2'
+        type: string
+
+concurrency:
+  group: genre-master
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - name: ジャンルマスタを生成
+        env:
+          RAKUTEN_APPLICATION_ID: ${{ secrets.RAKUTEN_APPLICATION_ID }}
+          RAKUTEN_ACCESS_KEY: ${{ secrets.RAKUTEN_ACCESS_KEY }}
+          RAKUTEN_AFFILIATE_ID: ${{ secrets.RAKUTEN_AFFILIATE_ID }}
+          RAKUTEN_REQUEST_INTERVAL_MS: '1100'
+        run: node dist/src/fetchGenreMaster.js --max-level=${{ inputs.maxLevel || '2' }}
+
+      - name: コミット
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add docs/data/genre-master.json
+          if git diff --cached --quiet; then
+            echo '変更なし'
+          else
+            git commit -m "data: ジャンルマスタを更新"
+            git push
+          fi

@@ -12,6 +12,15 @@ import type { RakutenRawItem, RakutenRawResponse } from '../types.js';
  */
 const RANKING_ENDPOINT = 'https://openapi.rakuten.co.jp/ichibaranking/api/IchibaItem/Ranking/20220601';
 const SEARCH_ENDPOINT = 'https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20220601';
+/**
+ * ジャンル検索。サービスパスは ichibagt で、ランキング・検索のどちらとも違う。
+ * 版は 20260701（公式ドキュメント記載の現行版）。
+ * 旧版 20170711 も応答するが 2026-08-17 に廃止予定のため使わない。
+ *
+ * 認証情報なしで叩くと、生きている経路は 400（applicationId must be present…）、
+ * 存在しない経路は 404（Resource not found）を返す。経路の正否はこれで切り分けられる。
+ */
+const GENRE_ENDPOINT = 'https://openapi.rakuten.co.jp/ichibagt/api/IchibaGenre/Search/20260701';
 
 export interface ClientOptions {
   applicationId: string;
@@ -95,6 +104,12 @@ export class RakutenClient {
   }
 
   private async request(endpoint: string, params: Record<string, string | number | undefined>): Promise<FetchResult> {
+    const json = (await this.requestJson(endpoint, params)) as RakutenRawResponse;
+    return { items: extractItems(json), title: typeof json.title === 'string' ? json.title : '' };
+  }
+
+  /** 商品系とジャンル系でレスポンス構造が違うため、JSONのまま返す層を分けている */
+  private async requestJson(endpoint: string, params: Record<string, string | number | undefined>): Promise<unknown> {
     await this.throttle();
     const url = this.buildUrl(endpoint, params);
     // アプリIDをログに残さない
@@ -125,8 +140,7 @@ export class RakutenClient {
           : '';
       throw new Error(`楽天API エラー: ${res.status} ${res.statusText} ${detail}${hint}`);
     }
-    const json = (await res.json()) as RakutenRawResponse;
-    return { items: extractItems(json), title: typeof json.title === 'string' ? json.title : '' };
+    return await res.json();
   }
 
   /** ランキングAPI（仕様書 4.1） */
@@ -156,6 +170,63 @@ export class RakutenClient {
       availability: 1, // 在庫ありのみ
     });
   }
+
+  /**
+   * ジャンル検索API。genreId=0 を渡すとジャンルツリーの最上位から辿れる。
+   * 設定画面でジャンルを名前で選べるようにするためのマスタ取得に使う。
+   */
+  async fetchGenre(genreId: string | number): Promise<GenreSearchResult> {
+    return parseGenreResponse(await this.requestJson(GENRE_ENDPOINT, { genreId }));
+  }
+}
+
+/** ジャンルツリーの1ノード */
+export interface GenreNode {
+  genreId: string;
+  genreName: string;
+  level: number;
+}
+
+export interface GenreSearchResult {
+  /** 問い合わせたジャンル自身。genreId=0（ルート）では返らないことがある */
+  current: GenreNode | null;
+  children: GenreNode[];
+}
+
+/**
+ * ジャンル検索のレスポンスを GenreNode に均す。
+ *
+ * 現行版(20260701)は `{ genre, children:[{genreId, nameJa, level}] }`、
+ * 旧版は `{ current, children:[{child:{genreId, genreName, genreLevel}}] }` を返す。
+ * 版が変わってもここだけ直せば済むよう、両方の形を受ける。
+ */
+export function parseGenreResponse(json: unknown): GenreSearchResult {
+  const root = (json ?? {}) as Record<string, unknown>;
+  const rawChildren = root.children ?? root.Children ?? [];
+  const children = (Array.isArray(rawChildren) ? rawChildren : [])
+    .map((entry) => {
+      const obj = entry as Record<string, unknown>;
+      // 旧版は要素が { child: {...} } でくるまれている
+      return toGenreNode((obj?.child ?? obj?.Child ?? obj) as Record<string, unknown>);
+    })
+    .filter((node): node is GenreNode => node !== null);
+
+  return { current: toGenreNode((root.genre ?? root.current) as Record<string, unknown>), children };
+}
+
+function toGenreNode(raw: Record<string, unknown> | undefined | null): GenreNode | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const genreId = raw.genreId ?? raw.genreid;
+  // 現行版は nameJa、旧版は genreName
+  const genreName = raw.nameJa ?? raw.genreName;
+  if (genreId === undefined || genreId === null || genreName === undefined || genreName === null) return null;
+
+  const level = Number(raw.level ?? raw.genreLevel);
+  return {
+    genreId: String(genreId),
+    genreName: String(genreName),
+    level: Number.isFinite(level) ? level : 0,
+  };
 }
 
 /**

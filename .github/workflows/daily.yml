@@ -1,10 +1,17 @@
 name: daily-fetch
 
 # 仕様書 3章: cron は UTC 指定。0 21 * * * = JST 06:00
-# GitHub Actions の cron は数十分遅延することがある（仕様書 12章で許容済み）
+#
+# GitHub Actions の定期実行は「予定どおり動く保証がない」。
+# 実績では 2026-08-02 の1回だけが動き、しかも 9時間44分遅れていた。
+# そのため朝の時間帯に3回仕掛けて取りこぼしを減らす。
+# 2回目以降は --skip-if-exists でその日のデータの有無を見て何もせずに終わるので、
+# 楽天APIを重ねて叩くことにはならない。
 on:
   schedule:
-    - cron: '0 21 * * *'
+    - cron: '0 21 * * *' # JST 06:00
+    - cron: '0 22 * * *' # JST 07:00
+    - cron: '0 23 * * *' # JST 08:00
   workflow_dispatch:
     inputs:
       date:
@@ -46,8 +53,29 @@ jobs:
         run: |
           if [ -n "${{ inputs.date }}" ]; then
             node dist/src/index.js --date=${{ inputs.date }}
+          elif [ "${{ github.event_name }}" = "schedule" ]; then
+            # 定期実行は3回仕掛けてあるので、取得済みならスキップする
+            node dist/src/index.js --skip-if-exists
           else
+            # 手動実行は「取り直したい」意図なので、すでにあっても上書きする
             node dist/src/index.js
+          fi
+
+      # 設定画面でジャンルを名前で選ぶための一覧。
+      # 通常は genre-master ワークフロー（週1）が作るが、まだ一度も動いていないと
+      # 設定画面が番号の手入力のままになってしまうため、無いときだけここで作る。
+      - name: ジャンルマスタが無ければ生成
+        env:
+          RAKUTEN_APPLICATION_ID: ${{ secrets.RAKUTEN_APPLICATION_ID }}
+          RAKUTEN_ACCESS_KEY: ${{ secrets.RAKUTEN_ACCESS_KEY }}
+          RAKUTEN_AFFILIATE_ID: ${{ secrets.RAKUTEN_AFFILIATE_ID }}
+          RAKUTEN_REQUEST_INTERVAL_MS: '1100'
+        run: |
+          if [ -f docs/data/genre-master.json ]; then
+            echo 'ジャンルマスタはすでにあります'
+          else
+            # ここで失敗しても日次データの生成は済んでいるので、ジョブ全体は落とさない
+            node dist/src/fetchGenreMaster.js || echo 'ジャンルマスタの生成に失敗しました（日次データには影響ありません）'
           fi
 
       - name: コミット

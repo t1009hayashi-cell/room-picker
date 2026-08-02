@@ -11,6 +11,7 @@
     "build": "tsc -p tsconfig.json",
     "fetch": "npm run build && node dist/src/index.js",
     "fetch:mock": "npm run build && node dist/src/index.js --mock",
+    "fetch:genres": "npm run build && node dist/src/fetchGenreMaster.js",
     "test": "npm run build && node scripts/run-tests.mjs dist/test web-test",
     "test:node": "node scripts/run-tests.mjs dist/test",
     "test:web": "node scripts/run-tests.mjs web-test",

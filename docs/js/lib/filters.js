@@ -41,8 +41,28 @@ export function isExcludedForUser(item, settings) {
   return { excluded: unique.length > 0, reasons: unique };
 }
 
+/**
+ * ポイント高倍率とみなす下限。
+ * 商品カードのバッジ（pointRate >= 5 で「ポイント◯倍」を出す）と同じ基準にする。
+ * 基準がずれると、バッジが付いていない商品が絞り込みに残って分かりにくい。
+ */
+export const HIGH_POINT_RATE = 5;
+
+/**
+ * 期間限定価格かどうか。
+ *
+ * 楽天APIは「割引前の価格」を返さないため、割引そのものは判定できない。
+ * 価格の開始・終了日時が設定されている＝期間を切って出している価格、という事実だけが取れる。
+ * タイムセールや期間限定の値下げがここに入る。
+ */
+export function isLimitedTimePrice(item) {
+  return Boolean(item.priceEndTime || item.priceStartTime);
+}
+
 export const CHIP_FILTERS = [
   { id: 'rateBoosted', label: '料率UPのみ', test: (item) => item.isRateBoosted },
+  { id: 'highPoint', label: `ポイント${HIGH_POINT_RATE}倍以上`, test: (item) => (item.pointRate ?? 0) >= HIGH_POINT_RATE },
+  { id: 'limitedPrice', label: '期間限定価格', test: isLimitedTimePrice },
   { id: 'freeShipping', label: '送料込みのみ', test: (item) => item.postageFlag === 0 },
   { id: 'inStock', label: '在庫ありのみ', test: (item) => item.availability === 1 },
   { id: 'rising', label: '上昇中のみ', test: (item) => (item.rankChange ?? 0) > 0 || item.isNew },

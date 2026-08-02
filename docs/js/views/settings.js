@@ -6,10 +6,18 @@
 import { app, refreshData, render, setAppBar, toast } from '../main.js';
 import * as store from '../lib/store.js';
 import { FIELD_LABELS, REQUIRED_FIELDS, buildResults, importCsv } from '../lib/csv.js';
+import { loadGenreMaster } from '../lib/dataLoader.js';
+import { DEFAULT_COMMISSION_RATE, searchGenres } from '../lib/genres.js';
 import { escapeHtml, fmtDateTime, fmtNum, fmtPercent, uuid } from '../lib/format.js';
 
 /** CSVインポートの途中状態（手動マッピング用） */
 let pendingCsv = null;
+
+/** ジャンルマスタ（data/genre-master.json）。未取得なら genres: [] */
+let genreMaster = { updatedAt: null, maxLevel: 0, genres: [] };
+
+/** 日次バッチを手動実行するためのGitHubの画面 */
+const ACTIONS_URL = 'https://github.com/t1009hayashi-cell/room-picker/actions/workflows/daily.yml';
 
 function genreRows() {
   const state = store.getState();
@@ -23,10 +31,43 @@ function genreRows() {
   return [...found.values()];
 }
 
+/**
+ * ジャンルの追加欄。
+ * マスタがあれば名前で検索して選ぶだけ、無ければ従来どおり genreId を手入力する。
+ * マスタは週1回のワークフローで作られるため、初回は存在しない。
+ */
+function genreSearchHtml() {
+  if (genreMaster.genres.length === 0) {
+    return `
+      <p class="small muted">
+        ジャンル一覧がまだありません。GitHubで <code>genre-master</code> を1回実行すると、
+        ここで名前を打つだけでジャンルを選べるようになります。
+        それまでは番号での追加のみできます。
+      </p>
+      <div class="row">
+        <input type="text" placeholder="genreId" id="new-genre-id" style="flex:1" />
+        <input type="text" placeholder="ジャンル名" id="new-genre-name" style="flex:1" />
+        <input type="number" placeholder="料率" step="0.005" value="${DEFAULT_COMMISSION_RATE}" id="new-genre-rate" style="width:6.5em" />
+      </div>
+      <button class="btn btn--block" data-action="add-genre">ジャンルを追加</button>`;
+  }
+
+  return `
+    <p class="small muted" style="margin:4px 0 6px">
+      ジャンル名の一部を入力すると候補が出ます（例: コーヒー）。選ぶだけで番号が入ります。
+      全${fmtNum(genreMaster.genres.length)}件・${genreMaster.updatedAt ? escapeHtml(fmtDateTime(genreMaster.updatedAt)) : '取得日時不明'}時点。
+    </p>
+    <input type="text" placeholder="ジャンル名で検索" id="genre-search" autocomplete="off" />
+    <div id="genre-hits"></div>`;
+}
+
 export async function renderSettings(root) {
   setAppBar('設定');
   const state = store.getState();
   const s = state.settings;
+
+  // ジャンル一覧は数百件あるので一度だけ読む。未生成でも空で返るため画面は止まらない
+  if (genreMaster.genres.length === 0) genreMaster = await loadGenreMaster();
 
   const genres = genreRows()
     .map((g) => {
@@ -100,12 +141,8 @@ export async function renderSettings(root) {
     </p>
     ${genres || '<p class="empty">データを読み込むと表示されます。</p>'}
     <div class="card">
-      <div class="row">
-        <input type="text" placeholder="genreId" id="new-genre-id" style="flex:1" />
-        <input type="text" placeholder="ジャンル名" id="new-genre-name" style="flex:1" />
-        <input type="number" placeholder="料率" step="0.005" value="0.04" id="new-genre-rate" style="width:6.5em" />
-      </div>
-      <button class="btn btn--block" data-action="add-genre">ジャンルを追加</button>
+      <strong class="small">ジャンルを追加</strong>
+      ${genreSearchHtml()}
       <button class="btn btn--block" data-action="copy-genres">config/genres.json 用のJSONをコピー</button>
     </div>
 
@@ -135,6 +172,23 @@ export async function renderSettings(root) {
       <p class="small muted">iOSはSafariのストレージを削除することがあります。月1回を目安にエクスポートしてください。最終エクスポート: ${state.meta.lastExportAt ? escapeHtml(fmtDateTime(state.meta.lastExportAt)) : 'まだ実行していません'}</p>
       <button class="btn btn--block btn--primary" data-action="export">JSONをエクスポート</button>
       <input type="file" accept="application/json,.json" id="import-file" style="margin-top:8px" />
+    </div>
+
+    <h2>データの更新</h2>
+    <div class="card">
+      <p class="small">
+        商品データは<strong>毎朝6時ごろ</strong>に自動で作られます（7時・8時にも取りこぼしの確認をします）。
+        ただし自動実行は混雑で数時間遅れることがあります。
+      </p>
+      <p class="small muted">
+        いま読み込んでいるデータ: <strong>${app.loadedDates.at(-1) ?? '—'}</strong>（${fmtNum(app.loadedDates.length)}日分）
+      </p>
+      <p class="small muted" style="margin-bottom:6px">
+        待てないときは下のボタンでGitHubの画面を開き、「Run workflow」を押すと2〜3分で作られます。
+        できあがったら「最新のデータを読み込む」を押してください。
+      </p>
+      <a class="btn btn--block" href="${ACTIONS_URL}" target="_blank" rel="noopener noreferrer">GitHubで今すぐ取得する</a>
+      <button class="btn btn--block btn--primary" data-action="reload-data">最新のデータを読み込む</button>
     </div>
 
     <h2>キャッシュ</h2>
@@ -207,7 +261,59 @@ function download(filename, text) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+/** 検索結果の描画。すでに追加済みのジャンルは、押せない状態にして重複追加を防ぐ */
+function renderGenreHits(root, query) {
+  const box = root.querySelector('#genre-hits');
+  if (!box) return;
+
+  const hits = searchGenres(genreMaster.genres, query);
+  if (query.trim() === '') {
+    box.innerHTML = '';
+    return;
+  }
+  if (hits.length === 0) {
+    box.innerHTML = '<p class="small muted" style="margin:6px 0 0">該当するジャンルがありません。</p>';
+    return;
+  }
+
+  const existing = new Set(genreRows().map((g) => String(g.genreId)));
+  box.innerHTML = hits
+    .map((g) => {
+      const added = existing.has(String(g.genreId));
+      return `<div class="spread" style="margin-top:6px">
+        <span class="small">${escapeHtml(g.path)}<span class="muted"> / ${escapeHtml(g.genreId)}</span></span>
+        <button class="btn ${added ? '' : 'btn--primary'}" data-genre-add="${escapeHtml(g.genreId)}" ${added ? 'disabled' : ''}>
+          ${added ? '追加済み' : '追加'}
+        </button>
+      </div>`;
+    })
+    .join('');
+
+  box.querySelectorAll('[data-genre-add]').forEach((el) => {
+    el.addEventListener('click', () => {
+      const genre = genreMaster.genres.find((g) => String(g.genreId) === el.dataset.genreAdd);
+      if (!genre) return;
+      store.update((s) =>
+        s.extraGenres.push({
+          genreId: String(genre.genreId),
+          genreName: genre.genreName,
+          // 料率はジャンル検索APIから取れない。API が返す商品ごとの実料率が優先される（仕様書4.4）
+          commissionRate: DEFAULT_COMMISSION_RATE,
+          enabled: true,
+        }),
+      );
+      toast(`${genre.genreName} を追加しました。取得対象にするには下のJSONコピーが必要です`);
+      renderSettings(root);
+    });
+  });
+}
+
 function bind(root) {
+  const search = root.querySelector('#genre-search');
+  if (search) {
+    search.addEventListener('input', () => renderGenreHits(root, search.value));
+  }
+
   root.querySelectorAll('[data-setting]').forEach((el) => {
     el.addEventListener('change', async () => {
       const value = Number(el.value);
@@ -306,7 +412,10 @@ function bind(root) {
     if (!action) return;
 
     if (action === 'add-genre') {
-      const genreId = root.querySelector('#new-genre-id').value.trim();
+      // ジャンルマスタがある場合は名前検索に置き換わっており、この入力欄は存在しない
+      const idEl = root.querySelector('#new-genre-id');
+      if (!idEl) return;
+      const genreId = idEl.value.trim();
       const genreName = root.querySelector('#new-genre-name').value.trim();
       const commissionRate = Number(root.querySelector('#new-genre-rate').value);
       if (!genreId || !genreName) return toast('genreId とジャンル名を入力してください');
@@ -355,6 +464,13 @@ function bind(root) {
     } else if (action === 'export') {
       download(`room-assist-${new Date().toISOString().slice(0, 10)}.json`, store.exportJson());
       toast('エクスポートしました');
+    } else if (action === 'reload-data') {
+      // 取得が終わったばかりの新しい日付を拾うため、キャッシュを捨てて index.json から読み直す
+      const before = app.loadedDates.at(-1) ?? null;
+      await refreshData({ force: true });
+      const after = app.loadedDates.at(-1) ?? null;
+      toast(after && after !== before ? `${after} のデータを読み込みました` : `新しいデータはまだありません（最新: ${after ?? '—'}）`);
+      renderSettings(root);
     } else if (action === 'clear-cache') {
       store.clearCache();
       await refreshData({ force: true });

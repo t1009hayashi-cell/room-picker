@@ -4,7 +4,7 @@
  */
 
 import { app, setAppBar, toast, refreshData } from '../main.js';
-import { applyChips, CHIP_FILTERS, REASON_LABELS, sameShopPostedOnDate } from '../lib/filters.js';
+import { applyChips, CHIP_FILTERS, isLimitedTimePrice, REASON_LABELS, sameShopPostedOnDate } from '../lib/filters.js';
 import { buildAiPrompt, copyToClipboard } from '../lib/prompt.js';
 import { isDuringSale } from '../lib/schedule.js';
 import { measureComment, splitComment } from '../lib/commentText.js';
@@ -25,6 +25,32 @@ import {
 
 const activeChips = new Set();
 let showExcluded = false;
+
+/**
+ * 並び順。
+ * 既定は hotScore 降順（仕様書 8.2）。同点のときの順序がぶれると
+ * 「さらに表示」で同じ商品が二度出たり抜けたりするため、必ず itemCode で決着をつける。
+ */
+const SORTS = [
+  { id: 'hot', label: 'hot順', compare: (a, b) => b.hotScore - a.hotScore },
+  { id: 'reward', label: '想定報酬順', compare: (a, b) => (b.estimatedReward ?? 0) - (a.estimatedReward ?? 0) },
+  { id: 'point', label: 'ポイント倍率順', compare: (a, b) => (b.pointRate ?? 0) - (a.pointRate ?? 0) },
+  { id: 'unposted', label: '未投稿を先に', compare: null }, // 投稿状態が要るので下で個別に扱う
+];
+let sortId = 'hot';
+
+function sortItems(items, posted) {
+  const sort = SORTS.find((s) => s.id === sortId) ?? SORTS[0];
+  const tieBreak = (a, b) => b.hotScore - a.hotScore || a.itemCode.localeCompare(b.itemCode);
+
+  const compare =
+    sort.id === 'unposted'
+      ? (a, b) => Number(Boolean(posted[a.itemCode])) - Number(Boolean(posted[b.itemCode])) || tieBreak(a, b)
+      : (a, b) => sort.compare(a, b) || tieBreak(a, b);
+
+  // 元の配列はカタログが持っているものなので壊さない
+  return [...items].sort(compare);
+}
 
 /**
  * 1度に描画する枚数。
@@ -60,14 +86,14 @@ export async function renderDayList(root, dateKey) {
   const mode = state.settings.calendarMode;
   setAppBar(`${dateKey}（${weekdayOf(dateKey)}）`, { back: true });
 
-  // 日付・モード・絞り込みが変わったら先頭から描き直す
-  const key = `${dateKey}|${mode}|${[...activeChips].sort().join(',')}|${showExcluded}`;
+  // 日付・モード・絞り込み・並び順が変わったら先頭から描き直す
+  const key = `${dateKey}|${mode}|${[...activeChips].sort().join(',')}|${showExcluded}|${sortId}`;
   if (key !== lastKey) {
     lastKey = key;
     visibleCount = PAGE_SIZE;
   }
 
-  const items = applyChips(itemsForDate(dateKey), activeChips);
+  const items = sortItems(applyChips(itemsForDate(dateKey), activeChips), state.posted);
   const totalReward = items.reduce((sum, item) => sum + (item.estimatedReward ?? 0), 0);
   const shown = items.slice(0, visibleCount);
   const rest = items.length - shown.length;
@@ -80,8 +106,16 @@ export async function renderDayList(root, dateKey) {
       ? `<button class="chip" data-chip="__excluded" aria-pressed="${showExcluded}">除外も表示</button>`
       : '';
 
+  const sortOptions = SORTS.map(
+    (s) => `<option value="${s.id}" ${s.id === sortId ? 'selected' : ''}>${s.label}</option>`,
+  ).join('');
+
   root.innerHTML = `
     <div class="chips">${chips}${excludedChip}</div>
+    <label class="row small muted" style="margin-bottom:8px">
+      <span>並び順</span>
+      <select id="day-sort" style="width:auto;flex:1">${sortOptions}</select>
+    </label>
     <p class="small muted">${mode === 'discovered' ? '発見日' : '投稿予定日'}モード / ${items.length}件 / 想定報酬合計 ${fmtYen(totalReward)}</p>
     ${shopConcentrationNotice(items)}
     <div id="day-items">
@@ -136,6 +170,7 @@ function cardHtml(item, dateKey, state) {
     item.postageFlag === 0 ? '<span class="badge">送料込み</span>' : '<span class="badge badge--warn">送料別</span>',
     outOfStock ? '<span class="badge badge--down">在庫なし</span>' : '',
     item.pointRate >= 5 ? `<span class="badge badge--warn">ポイント${item.pointRate}倍</span>` : '',
+    isLimitedTimePrice(item) ? '<span class="badge badge--rate">期間限定価格</span>' : '',
     posted ? '<span class="badge badge--posted">投稿済み</span>' : '',
     `<span class="badge">hot ${item.hotScore}</span>`,
   ]
@@ -204,6 +239,7 @@ function cardHtml(item, dateKey, state) {
     <div class="row" style="margin-top:8px">
       <input type="date" value="${escapeHtml(scheduled)}" data-schedule="${escapeHtml(item.itemCode)}" style="width:auto" />
       <button class="btn" data-copy="${escapeHtml(item.itemCode)}">AI用プロンプト</button>
+      <button class="btn" data-copy-url="${escapeHtml(item.itemCode)}" ${item.itemUrl ? '' : 'disabled'}>URLをコピー</button>
       <a class="btn" href="${escapeHtml(item.itemUrl)}" target="_blank" rel="noopener noreferrer">楽天で開く</a>
     </div>
     <button class="btn ${posted ? '' : 'btn--primary'} btn--block" data-post="${escapeHtml(item.itemCode)}">
@@ -233,6 +269,11 @@ function bind(root, dateKey) {
       else activeChips.add(id);
       renderDayList(root, dateKey);
     });
+  });
+
+  root.querySelector('#day-sort')?.addEventListener('change', (event) => {
+    sortId = event.target.value;
+    renderDayList(root, dateKey);
   });
 
   root.querySelector('[data-more]')?.addEventListener('click', () => {
@@ -290,6 +331,15 @@ function bind(root, dateKey) {
         s.aiCopied[code] = true;
       });
       toast(ok ? 'AI用プロンプトをコピーしました' : 'コピーに失敗しました');
+    });
+  });
+
+  root.querySelectorAll('[data-copy-url]').forEach((el) => {
+    el.addEventListener('click', async () => {
+      const item = findItem(el.dataset.copyUrl);
+      if (!item?.itemUrl) return toast('この商品にはURLがありません');
+      const ok = await copyToClipboard(item.itemUrl);
+      toast(ok ? '商品URLをコピーしました' : 'コピーに失敗しました');
     });
   });
 

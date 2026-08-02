@@ -33,7 +33,10 @@ async function main(): Promise<void> {
 
   const now = args.date ? new Date(`${args.date}T06:00:00+09:00`) : new Date();
   const date = toJstDateKey(now);
-  const applicationId = process.env.RAKUTEN_APPLICATION_ID ?? null;
+  // GitHub Secrets への貼り付け時に末尾改行や前後の空白が混入することがある。
+  // 混入したままURLのクエリパラメータに使うと、楽天APIが「specify valid applicationId」
+  // として拒否する（実際にCIで発生した）。防御的にtrimし、空文字はnull扱いにする。
+  const applicationId = process.env.RAKUTEN_APPLICATION_ID?.trim() || null;
 
   log(`room-assist: ${date} の抽出を開始します（${args.mock ? 'モック' : '実API'}）`);
 
@@ -51,7 +54,7 @@ async function main(): Promise<void> {
     }
     const client = new RakutenClient({
       applicationId,
-      affiliateId: process.env.RAKUTEN_AFFILIATE_ID ?? null,
+      affiliateId: process.env.RAKUTEN_AFFILIATE_ID?.trim() || null,
       intervalMs: Number(process.env.RAKUTEN_REQUEST_INTERVAL_MS ?? 1100),
       onLog: log,
     });

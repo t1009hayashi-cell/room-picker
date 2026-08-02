@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>楽天API 接続テスト</title>
+    <link rel="stylesheet" href="./css/style.css" />
+    <style>
+      body { padding: 16px; }
+      .wrap { max-width: 560px; margin: 0 auto; }
+      pre { white-space: pre-wrap; word-break: break-all; font-size: 12px; }
+      .result { margin-top: 12px; }
+      .ok { border-left: 3px solid var(--ok); }
+      .ng { border-left: 3px solid var(--danger); }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1 style="font-size:18px">楽天API 接続テスト</h1>
+
+      <div class="card">
+        <p class="small muted" style="margin-top:0">
+          このページは<strong>スマホのブラウザから直接</strong>楽天APIを呼べるかどうかを確かめるためのものです。
+          結果によって、今後の作り方が決まります。
+        </p>
+        <p class="small muted">
+          入力したアプリIDは、このページの中だけで使われ、楽天以外のどこにも送信されません。
+          保存もされないので、ページを閉じれば消えます。
+        </p>
+      </div>
+
+      <div class="card">
+        <label class="field">
+          <span>楽天のアプリID</span>
+          <input type="text" id="appid" placeholder="ここに貼り付けてください" autocomplete="off" spellcheck="false" />
+        </label>
+        <button class="btn btn--primary btn--block" id="run">テストする</button>
+      </div>
+
+      <div id="result" class="result"></div>
+    </div>
+
+    <script type="module">
+      const ENDPOINT = 'https://app.rakuten.co.jp/services/api/IchibaItem/Ranking/20220601';
+      const resultEl = document.getElementById('result');
+
+      const show = (cls, title, body) => {
+        resultEl.innerHTML =
+          `<div class="card ${cls}"><strong>${title}</strong><pre class="muted">${body}</pre></div>`;
+      };
+
+      document.getElementById('run').addEventListener('click', async () => {
+        const appId = document.getElementById('appid').value.trim();
+        if (!appId) {
+          show('ng', '入力してください', 'アプリIDが空です。');
+          return;
+        }
+
+        show('', 'テスト中…', '楽天に問い合わせています。');
+
+        const url = new URL(ENDPOINT);
+        url.searchParams.set('applicationId', appId);
+        url.searchParams.set('format', 'json');
+        url.searchParams.set('formatVersion', '2');
+        url.searchParams.set('genreId', '100227');
+
+        let res;
+        try {
+          res = await fetch(url.toString());
+        } catch (err) {
+          // レスポンスすら読めない＝ブラウザからの直接呼び出しが許可されていない
+          show(
+            'ng',
+            '結果: ブラウザから直接は呼べません',
+            'ブラウザの安全機能により、楽天からの返事を読み取れませんでした。\n' +
+              'この方法は使えないため、別の方法を検討します。\n\n' +
+              `技術的な内容: ${err.message}`,
+          );
+          return;
+        }
+
+        const text = await res.text();
+        if (!res.ok) {
+          show(
+            'ng',
+            `結果: 楽天に断られました（${res.status}）`,
+            text.replace(appId, '***') + '\n\nこのページのURLが、楽天の「許可されたウェブサイト」に登録されているか確認してください。',
+          );
+          return;
+        }
+
+        let count = '不明';
+        try {
+          const json = JSON.parse(text);
+          count = (json.Items ?? json.items ?? []).length;
+        } catch {
+          /* 件数が読めなくても成功判定は変えない */
+        }
+        show(
+          'ok',
+          '結果: 成功しました',
+          `商品を ${count} 件取得できました。\nスマホのブラウザから直接データを取れます。この方法で作り直せます。`,
+        );
+      });
+    </script>
+  </body>
+</html>

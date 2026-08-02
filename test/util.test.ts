@@ -78,6 +78,26 @@ describe('url（仕様書 4.1.2 アプリID露出の防止）', () => {
     assert.equal(sanitizeUrl(`https://example.com/x?foo=1&sid=wsc_${appId}`, appId), 'https://example.com/x?foo=1');
   });
 
+  it('アフィリエイト転送URLから実際の商品URLを取り出す（新APIの形式）', () => {
+    const appId = '5891715c-b3d2-4a84-91bf-d955622151a1';
+    const affiliate =
+      `https://hb.afl.rakuten.co.jp/hgc/${appId}/?pc=https%3A%2F%2Fitem.rakuten.co.jp%2Fkouragumi%2F202114%2F` +
+      '&m=http%3A%2F%2Fm.rakuten.co.jp%2Fkouragumi%2Fi%2F10001635%2F';
+    const cleaned = sanitizeUrl(affiliate, appId);
+    assert.equal(cleaned, 'https://item.rakuten.co.jp/kouragumi/202114/');
+    assert.equal(cleaned.includes(appId), false);
+  });
+
+  it('転送先を取り出せない転送URLは、アプリIDを露出させるくらいなら捨てる', () => {
+    const appId = '5891715c-b3d2-4a84-91bf-d955622151a1';
+    assert.equal(sanitizeUrl(`https://hb.afl.rakuten.co.jp/hgc/${appId}/`, appId), '');
+  });
+
+  it('パスにアプリIDを含むURLは捨てる', () => {
+    const appId = 'aaaa-bbbb';
+    assert.equal(sanitizeUrl(`https://example.com/${appId}/item`, appId), '');
+  });
+
   it('rafcid 以外のパラメータは残す', () => {
     assert.equal(sanitizeUrl('https://example.com/x?a=1&b=2'), 'https://example.com/x?a=1&b=2');
   });

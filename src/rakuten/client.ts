@@ -1,10 +1,22 @@
 import type { RakutenRawItem, RakutenRawResponse } from '../types.js';
 
-const RANKING_ENDPOINT = 'https://app.rakuten.co.jp/services/api/IchibaItem/Ranking/20220601';
-const SEARCH_ENDPOINT = 'https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601';
+/**
+ * 楽天ウェブサービスは2026年にインフラを刷新し、エンドポイントと認証方式が変わった。
+ * 旧 app.rakuten.co.jp/services/api/... は廃止済みで、applicationId だけでは認証できない。
+ *
+ * 変更点
+ *  - ベースURLが openapi.rakuten.co.jp に移行
+ *  - **ランキングと検索でサービスパスが異なる**（ichibaranking / ichibams）
+ *  - applicationId に加えて accessKey が必須。欠けると
+ *    「accessKey must be present as a query parameter or in the header」で 400 が返る
+ */
+const RANKING_ENDPOINT = 'https://openapi.rakuten.co.jp/ichibaranking/api/IchibaItem/Ranking/20220601';
+const SEARCH_ENDPOINT = 'https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20220601';
 
 export interface ClientOptions {
   applicationId: string;
+  /** 楽天アプリ管理画面の「アクセスキー」。2026年の新APIでは必須 */
+  accessKey: string;
   affiliateId?: string | null;
   /** 仕様書 4.3: リクエスト間に1秒以上のsleepが必須。既定は 1100ms */
   intervalMs?: number;
@@ -34,6 +46,7 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
  */
 export class RakutenClient {
   private readonly applicationId: string;
+  private readonly accessKey: string;
   private readonly affiliateId: string | null;
   private readonly intervalMs: number;
   private readonly formatVersion: 1 | 2;
@@ -46,7 +59,13 @@ export class RakutenClient {
     if (!options.applicationId) {
       throw new Error('applicationId が未設定です（環境変数 RAKUTEN_APPLICATION_ID）');
     }
+    if (!options.accessKey) {
+      throw new Error(
+        'accessKey が未設定です（環境変数 RAKUTEN_ACCESS_KEY）。2026年の新APIでは applicationId と両方が必須です',
+      );
+    }
     this.applicationId = options.applicationId;
+    this.accessKey = options.accessKey;
     this.affiliateId = options.affiliateId ?? null;
     this.intervalMs = Math.max(1000, options.intervalMs ?? 1100);
     this.formatVersion = options.formatVersion ?? 2;
@@ -64,6 +83,7 @@ export class RakutenClient {
   private buildUrl(endpoint: string, params: Record<string, string | number | undefined>): string {
     const url = new URL(endpoint);
     url.searchParams.set('applicationId', this.applicationId);
+    url.searchParams.set('accessKey', this.accessKey);
     url.searchParams.set('format', 'json');
     url.searchParams.set('formatVersion', String(this.formatVersion));
     if (this.affiliateId) url.searchParams.set('affiliateId', this.affiliateId);
@@ -94,10 +114,14 @@ export class RakutenClient {
     const res = await this.fetchImpl(url, { headers });
     if (!res.ok) {
       const body = await res.text().catch(() => '');
-      const detail = body.slice(0, 200).replace(this.applicationId, '***');
+      const detail = body
+        .slice(0, 200)
+        .replaceAll(this.applicationId, '***')
+        .replaceAll(this.accessKey, '***');
       const hint =
-        res.status === 400 && body.includes('applicationId')
-          ? `\nヒント: 楽天ウェブサービスのアプリ設定「許可されたウェブサイト」に ${this.siteUrl ?? '(未設定)'} が登録されているか確認してください`
+        res.status === 400 && /applicationId|accessKey/i.test(body)
+          ? '\nヒント: 楽天アプリ管理画面の「アプリケーションID」を RAKUTEN_APPLICATION_ID に、' +
+            '「アクセスキー」を RAKUTEN_ACCESS_KEY に設定してください（2026年の新APIでは両方必須）'
           : '';
       throw new Error(`楽天API エラー: ${res.status} ${res.statusText} ${detail}${hint}`);
     }

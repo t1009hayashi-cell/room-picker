@@ -73,12 +73,40 @@ node --env-file=.env dist/src/index.js
    `docs/data/*.json` に抽出結果が公開される点を許容すること。
 2. Settings → Pages → Source: `Deploy from a branch` / Branch: `main` / Folder: `/docs`
 3. Settings → Secrets and variables → Actions に登録
-   - `RAKUTEN_APPLICATION_ID`（必須）
+   - `RAKUTEN_APPLICATION_ID`（必須）— 楽天アプリ管理画面の「**アプリケーションID**」
+   - `RAKUTEN_ACCESS_KEY`（**必須**）— 楽天アプリ管理画面の「**アクセスキー**」
    - `RAKUTEN_AFFILIATE_ID`（任意。指定すると `affiliateUrl` が返る）
 4. Actions タブから `daily-fetch` を手動実行して疎通を確認する。
 
 アプリIDは `itemUrl` / `shopUrl` の `rafcid` として自動付与されるが、
 保存前に除去しているためリポジトリには残らない（`src/util/url.ts`、テストで検証済み）。
+
+## 楽天API 2026年刷新への対応（重要）
+
+**仕様書が前提としている旧APIは廃止されている。** 実装時に接続できず、原因特定に時間を要した。
+
+| | 旧（仕様書の記述） | 新（実装で採用） |
+|---|---|---|
+| ランキングAPI | `app.rakuten.co.jp/services/api/IchibaItem/Ranking/20220601` | `openapi.rakuten.co.jp/`**`ichibaranking`**`/api/IchibaItem/Ranking/20220601` |
+| 検索API | `app.rakuten.co.jp/services/api/IchibaItem/Search/20220601` | `openapi.rakuten.co.jp/`**`ichibams`**`/api/IchibaItem/Search/20220601` |
+| 認証 | `applicationId` のみ | `applicationId` **と** `accessKey` の両方が必須 |
+
+**ランキングと検索でサービスパスが異なる**（`ichibaranking` / `ichibams`）点に注意。共通だと思って片方のパスを使い回すと 404 になる。
+
+`accessKey` が無いと次のエラーで 400 が返る。
+
+```
+accessKey must be present as a query parameter or in the header
+```
+
+旧エンドポイントに旧来の `applicationId` だけを送ると、値が正しくても
+`specify valid applicationId` が返る。**でたらめな値を送ったときと同じ応答**なので、
+「IDが間違っている」と誤解しやすい。切り分ける際は、空値で送ったときの
+`client_id or access_token is required` との差を見るとよい。
+
+なお楽天ウェブサービスのテストフォームは楽天のサーバー内部から実行されるため、
+**テストフォームで通っても外部から使えるとは限らない**。疎通確認はブラウザのアドレス欄に
+エンドポイントURLを直接入力して行うこと。
 
 ## 実装時に確定した事項
 

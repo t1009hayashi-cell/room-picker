@@ -12,6 +12,17 @@
 const KEY = 'room-assist:v1';
 const EXPORT_REMINDER_DAYS = 30;
 
+/**
+ * 投稿済み・予約の記録キー。
+ *
+ * 商品コードだけで持つと、同じ商品が複数の日に出たとき（発見日モードでは
+ * ランキングに載った日ごとに出る）に、1日で押した印が全部の日に付いてしまう。
+ * 「押した日」に紐づけるため、日付と商品コードの組をキーにする。
+ */
+export function dayItemKey(dateKey, itemCode) {
+  return `${dateKey}|${itemCode}`;
+}
+
 export const DEFAULT_SETTINGS = {
   minPrice: 3000,
   minReview: 500,
@@ -29,10 +40,11 @@ function emptyState() {
     schedule: {},
     comments: {},
     postedAngle: {},
+    /** 「日付|itemCode」-> true。押した日にだけ付く */
     posted: {},
     /**
      * 予約投稿。投稿文を先に書いておき、投稿予定日に開いてコピペするための目印。
-     * itemCode -> { reservedAt, scheduledDate }
+     * 「日付|itemCode」-> { reservedAt, scheduledDate }
      */
     reserved: {},
     /** AI用プロンプトをコピーした商品。投稿ログの usedAiGeneration に使う */
@@ -49,9 +61,53 @@ function emptyState() {
   };
 }
 
+/** JSTでの日付キー。旧データの移行で postedAt から日付を割り出すのに使う */
+function jstDateKeyOf(iso) {
+  const t = Date.parse(iso ?? '');
+  if (Number.isNaN(t)) return null;
+  return new Date(t + 9 * 3600000).toISOString().slice(0, 10);
+}
+
+/**
+ * 投稿済みを「日付|itemCode」形式に移行する。
+ * 旧データは itemCode だけをキーにしていたので、どの日で押したかを投稿ログから復元する。
+ * 投稿ログは「投稿済みにする」で必ず1件作られるため、対応が取れないことは基本的に無い。
+ */
+function migratePosted(rawPosted, posts) {
+  const out = {};
+  for (const [key, value] of Object.entries(rawPosted ?? {})) {
+    if (!value) continue;
+    if (key.includes('|')) {
+      out[key] = true;
+      continue;
+    }
+    const post = [...posts].reverse().find((p) => p.itemCode === key);
+    const dateKey = post?.dateKey ?? jstDateKeyOf(post?.postedAt);
+    // 日付を復元できない場合は捨てずに残す。消すと投稿済みの印が黙って消える
+    out[dateKey ? dayItemKey(dateKey, key) : key] = true;
+  }
+  return out;
+}
+
+/** 予約を「日付|itemCode」形式に移行する。旧データは中に scheduledDate を持っている */
+function migrateReserved(rawReserved) {
+  const out = {};
+  for (const [key, value] of Object.entries(rawReserved ?? {})) {
+    if (!value) continue;
+    if (key.includes('|')) {
+      out[key] = value;
+      continue;
+    }
+    const dateKey = value.scheduledDate;
+    out[dateKey ? dayItemKey(dateKey, key) : key] = value;
+  }
+  return out;
+}
+
 function migrate(raw) {
   const base = emptyState();
   if (!raw || typeof raw !== 'object') return base;
+  const posts = Array.isArray(raw.posts) ? raw.posts : [];
   return {
     ...base,
     ...raw,
@@ -60,11 +116,11 @@ function migrate(raw) {
     schedule: raw.schedule ?? {},
     comments: raw.comments ?? {},
     postedAngle: raw.postedAngle ?? {},
-    posted: raw.posted ?? {},
+    posted: migratePosted(raw.posted, posts),
     // 予約投稿は後から足した項目。既存の保存データには入っていない
-    reserved: raw.reserved ?? {},
+    reserved: migrateReserved(raw.reserved),
     aiCopied: raw.aiCopied ?? {},
-    posts: Array.isArray(raw.posts) ? raw.posts : [],
+    posts,
     results: Array.isArray(raw.results) ? raw.results : [],
     manualSales: Array.isArray(raw.manualSales) ? raw.manualSales : [],
     genreRateOverrides: raw.genreRateOverrides ?? {},
@@ -129,10 +185,28 @@ export function update(mutator) {
 
 /* ---------- 個別の操作 ---------- */
 
-export function setScheduledDate(itemCode, dateKey) {
+/**
+ * 投稿予定日の変更。
+ * 投稿予定日モードでは商品カードが別の日に移るため、
+ * 元の日に付いていた予約・投稿済みの印も一緒に移す（移さないと印が行方不明になる）。
+ * 発見日モードで付いた別の日の印はそのまま残す。
+ */
+export function setScheduledDate(itemCode, dateKey, previousDateKey = null) {
   update((s) => {
     if (dateKey) s.schedule[itemCode] = dateKey;
     else delete s.schedule[itemCode];
+
+    if (!dateKey || !previousDateKey || previousDateKey === dateKey) return;
+    const from = dayItemKey(previousDateKey, itemCode);
+    const to = dayItemKey(dateKey, itemCode);
+    if (s.reserved[from]) {
+      s.reserved[to] = { ...s.reserved[from], scheduledDate: dateKey };
+      delete s.reserved[from];
+    }
+    if (s.posted[from]) {
+      s.posted[to] = true;
+      delete s.posted[from];
+    }
   });
 }
 
@@ -156,21 +230,24 @@ export function getComment(itemCode) {
   return getState().comments[itemCode] ?? null;
 }
 
-export function isPosted(itemCode) {
-  return Boolean(getState().posted[itemCode]);
+export function isPosted(dateKey, itemCode) {
+  return Boolean(getState().posted[dayItemKey(dateKey, itemCode)]);
 }
 
 /**
  * 予約投稿の登録／解除（投稿文を先に書いておき、投稿予定日にコピペするための目印）。
  * 投稿文もここで一緒に保存する。予約したのに本文が残っていない、という状態を作らないため。
+ *
+ * 投稿文は商品ごとに1つ（日付をまたいで共有する）。同じ商品なら書いた文面は使い回せるため。
  */
-export function setReserved(itemCode, on, { scheduledDate = null, text = null, angle = null } = {}) {
+export function setReserved(dateKey, itemCode, on, { scheduledDate = null, text = null, angle = null } = {}) {
   update((s) => {
+    const key = dayItemKey(dateKey, itemCode);
     if (!on) {
-      delete s.reserved[itemCode];
+      delete s.reserved[key];
       return;
     }
-    s.reserved[itemCode] = { reservedAt: new Date().toISOString(), scheduledDate };
+    s.reserved[key] = { reservedAt: new Date().toISOString(), scheduledDate: scheduledDate ?? dateKey };
     if (text) {
       s.comments[itemCode] = text;
       if (angle) s.postedAngle[itemCode] = angle;
@@ -178,26 +255,32 @@ export function setReserved(itemCode, on, { scheduledDate = null, text = null, a
   });
 }
 
-export function isReserved(itemCode) {
-  return Boolean(getState().reserved[itemCode]);
+export function isReserved(dateKey, itemCode) {
+  return Boolean(getState().reserved[dayItemKey(dateKey, itemCode)]);
 }
 
-/** 投稿ログ（仕様書 5.4）。「投稿済みにする」を押した時点で1レコード確定保存する */
+/**
+ * 投稿ログ（仕様書 5.4）。「投稿済みにする」を押した時点で1レコード確定保存する。
+ * record.dateKey は押したときに見ていた日。投稿済みの印をその日にだけ付けるために使う。
+ */
 export function addPost(record) {
   update((s) => {
-    s.posted[record.itemCode] = true;
+    const key = dayItemKey(record.dateKey, record.itemCode);
+    s.posted[key] = true;
     // 投稿すれば予約は済んだことになる。残すと「予約のみ」に投稿済みが混ざって使えなくなる
-    delete s.reserved[record.itemCode];
+    delete s.reserved[key];
     s.posts.push(record);
   });
 }
 
-export function undoPost(itemCode) {
+export function undoPost(dateKey, itemCode) {
   update((s) => {
-    delete s.posted[itemCode];
+    delete s.posted[dayItemKey(dateKey, itemCode)];
     // 投稿ログは分析の基盤なので消さない。取り消しは最後の1件だけ撤回する
     for (let i = s.posts.length - 1; i >= 0; i -= 1) {
-      if (s.posts[i].itemCode === itemCode) {
+      const post = s.posts[i];
+      // dateKey を持たない古いログは商品コードだけで判定する
+      if (post.itemCode === itemCode && (post.dateKey === undefined || post.dateKey === dateKey)) {
         s.posts.splice(i, 1);
         break;
       }

@@ -376,6 +376,29 @@ thead th {
   color: #fff;
 }
 
+/* ---- ジャンル検索の候補 ---- */
+.genre-hit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 0;
+  border-top: 1px solid var(--line);
+}
+
+.genre-hit__name {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* 「追加」と「追加済み」で幅が変わらないよう固定する */
+.genre-hit__btn {
+  flex: 0 0 5.5em;
+  padding: 7px 0;
+  text-align: center;
+}
+
 /* ---- calendar ---- */
 .cal__head {
   display: flex;

@@ -9,6 +9,7 @@
 import { flattenSnapshot } from './dataLoader.js';
 import { isExcludedForUser } from './filters.js';
 import { resolveScheduledDate } from './schedule.js';
+import { dayItemKey } from './store.js';
 
 export function buildCatalog({ snapshots, sales, settings, schedule }) {
   const byDiscovered = new Map();
@@ -52,8 +53,13 @@ function decorate(item, sales, settings, schedule) {
   };
 }
 
-/** カレンダーの日付セルに出す集計（仕様書 8.1） */
-export function summarizeDay(items, postedMap, reservedMap = {}) {
+/**
+ * カレンダーの日付セルに出す集計（仕様書 8.1）。
+ *
+ * 投稿済み・予約は「日付|itemCode」で記録されているため dateKey が要る。
+ * 商品コードだけで見ると、同じ商品が載っている他の日にも印が付いてしまう。
+ */
+export function summarizeDay(items, dateKey, { posted: postedMap = {}, reserved: reservedMap = {} } = {}) {
   let todo = 0;
   let posted = 0;
   let reserved = 0;
@@ -61,10 +67,11 @@ export function summarizeDay(items, postedMap, reservedMap = {}) {
   let reward = 0;
 
   for (const item of items) {
-    if (postedMap[item.itemCode]) posted += 1;
+    const key = dayItemKey(dateKey, item.itemCode);
+    if (postedMap[key]) posted += 1;
     else todo += 1;
     // 予約は「投稿文を書いて当日に備えた」印。投稿すると解除されるので posted とは重ならない
-    if (reservedMap[item.itemCode]) reserved += 1;
+    if (reservedMap[key]) reserved += 1;
     if (item.isRateBoosted) rateBoosted += 1;
     reward += item.estimatedReward ?? 0;
   }

@@ -5,7 +5,7 @@
 
 import { app, setAppBar, toast, refreshData } from '../main.js';
 import { applyChips, CHIP_FILTERS, isLimitedTimePrice, REASON_LABELS, sameShopPostedOnDate } from '../lib/filters.js';
-import { buildAiPrompt, copyToClipboard } from '../lib/prompt.js';
+import { copyToClipboard } from '../lib/prompt.js';
 import { isDuringSale } from '../lib/schedule.js';
 import { measureComment, splitComment } from '../lib/commentText.js';
 import * as store from '../lib/store.js';
@@ -44,16 +44,16 @@ let sortId = 'hot';
  */
 const STATUS_FILTERS = [
   { id: 'all', label: 'すべて', test: () => true },
-  { id: 'reserved', label: '予約のみ', test: (item, state) => Boolean(state.reserved[item.itemCode]) },
-  { id: 'unposted', label: '未投稿のみ', test: (item, state) => !state.posted[item.itemCode] },
-  { id: 'posted', label: '投稿済みのみ', test: (item, state) => Boolean(state.posted[item.itemCode]) },
+  { id: 'reserved', label: '予約のみ', test: (state, key) => Boolean(state.reserved[key]) },
+  { id: 'unposted', label: '未投稿のみ', test: (state, key) => !state.posted[key] },
+  { id: 'posted', label: '投稿済みのみ', test: (state, key) => Boolean(state.posted[key]) },
 ];
 let statusId = 'all';
 
-function applyStatus(items, state) {
+function applyStatus(items, state, dateKey) {
   const filter = STATUS_FILTERS.find((f) => f.id === statusId) ?? STATUS_FILTERS[0];
   if (filter.id === 'all') return items;
-  return items.filter((item) => filter.test(item, state));
+  return items.filter((item) => filter.test(state, store.dayItemKey(dateKey, item.itemCode)));
 }
 
 function sortItems(items) {
@@ -104,8 +104,10 @@ export async function renderDayList(root, dateKey) {
     visibleCount = PAGE_SIZE;
   }
 
-  const items = sortItems(applyStatus(applyChips(itemsForDate(dateKey), activeChips), state));
-  const reservedCount = itemsForDate(dateKey).filter((item) => state.reserved[item.itemCode]).length;
+  const items = sortItems(applyStatus(applyChips(itemsForDate(dateKey), activeChips), state, dateKey));
+  const reservedCount = itemsForDate(dateKey).filter(
+    (item) => state.reserved[store.dayItemKey(dateKey, item.itemCode)],
+  ).length;
   const totalReward = items.reduce((sum, item) => sum + (item.estimatedReward ?? 0), 0);
   const shown = items.slice(0, visibleCount);
   const rest = items.length - shown.length;
@@ -169,8 +171,10 @@ function shopConcentrationNotice(items) {
 }
 
 function cardHtml(item, dateKey, state) {
-  const posted = Boolean(state.posted[item.itemCode]);
-  const reserved = Boolean(state.reserved[item.itemCode]);
+  // 投稿済み・予約は「この日のこの商品」に対する印。他の日には影響させない
+  const stateKey = store.dayItemKey(dateKey, item.itemCode);
+  const posted = Boolean(state.posted[stateKey]);
+  const reserved = Boolean(state.reserved[stateKey]);
   const angle = state.postedAngle[item.itemCode] ?? item.draftComments?.[0]?.angle ?? null;
   const draft = draftFor(item, angle);
   const saved = state.comments[item.itemCode];
@@ -272,8 +276,8 @@ function cardHtml(item, dateKey, state) {
       <a class="btn" href="${escapeHtml(item.itemUrl)}" target="_blank" rel="noopener noreferrer">楽天で開く</a>
     </div>
     <div class="row" style="margin-top:6px">
-      <input type="date" value="${escapeHtml(scheduled)}" data-schedule="${escapeHtml(item.itemCode)}" style="width:auto" />
-      <button class="btn" data-copy="${escapeHtml(item.itemCode)}">AI用プロンプト</button>
+      <span class="small muted">投稿予定日</span>
+      <input type="date" value="${escapeHtml(scheduled)}" data-schedule="${escapeHtml(item.itemCode)}" data-schedule-from="${escapeHtml(scheduled)}" style="width:auto" />
     </div>
 
     ${
@@ -359,24 +363,12 @@ function bind(root, dateKey) {
     el.addEventListener('change', async () => {
       const code = el.dataset.schedule;
       if (!/^\d{4}-\d{2}-\d{2}$/.test(el.value)) return;
-      store.setScheduledDate(code, el.value);
+      // 予定日が変わるとカードが別の日に移るので、予約・投稿済みの印も一緒に移す
+      store.setScheduledDate(code, el.value, el.dataset.scheduleFrom || null);
       toast(`投稿予定日を ${el.value} に変更しました`);
       // 割当が変わると別の日に移るため、カタログを組み直してこの日のリストを描き直す
       await refreshData();
       renderDayList(root, dateKey);
-    });
-  });
-
-  root.querySelectorAll('[data-copy]').forEach((el) => {
-    el.addEventListener('click', async () => {
-      const code = el.dataset.copy;
-      const item = findItem(code);
-      if (!item) return;
-      const ok = await copyToClipboard(buildAiPrompt(item));
-      store.update((s) => {
-        s.aiCopied[code] = true;
-      });
-      toast(ok ? 'AI用プロンプトをコピーしました' : 'コピーに失敗しました');
     });
   });
 
@@ -397,8 +389,8 @@ function bind(root, dateKey) {
     el.addEventListener('click', () => {
       const code = el.dataset.reserve;
       const state = store.getState();
-      if (state.reserved[code]) {
-        store.setReserved(code, false);
+      if (store.isReserved(dateKey, code)) {
+        store.setReserved(dateKey, code, false);
         toast('予約を取り消しました');
         renderDayList(root, dateKey);
         return;
@@ -408,9 +400,8 @@ function bind(root, dateKey) {
       const text = area?.value ?? '';
       if (!text.trim()) return toast('投稿文を入力してから予約してください');
 
-      const scheduledDate = state.schedule[code] ?? findItem(code)?.scheduledDate ?? dateKey;
-      store.setReserved(code, true, { scheduledDate, text, angle: state.postedAngle[code] });
-      toast(`${scheduledDate} に予約しました。当日この日付を開くと「表示: 予約のみ」で出せます`);
+      store.setReserved(dateKey, code, true, { scheduledDate: dateKey, text, angle: state.postedAngle[code] });
+      toast(`${dateKey} に予約しました。当日この日付を開くと「表示: 予約のみ」で出せます`);
       renderDayList(root, dateKey);
     });
   });
@@ -428,8 +419,8 @@ function bind(root, dateKey) {
     el.addEventListener('click', () => {
       const code = el.dataset.post;
       const state = store.getState();
-      if (state.posted[code]) {
-        store.undoPost(code);
+      if (store.isPosted(dateKey, code)) {
+        store.undoPost(dateKey, code);
         toast('投稿済みを取り消しました');
         renderDayList(root, dateKey);
         return;
@@ -451,6 +442,8 @@ function bind(root, dateKey) {
       store.addPost({
         postId: uuid(),
         postedAt,
+        // 押したときに見ていた日。投稿済みの印をその日にだけ付けるために持つ
+        dateKey,
         itemCode: item.itemCode,
         // 成果データとの突合キー。短縮・整形・トリムを一切行わない
         itemNameRaw: item.itemName,

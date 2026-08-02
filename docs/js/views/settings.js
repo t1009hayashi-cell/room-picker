@@ -280,11 +280,11 @@ function renderGenreHits(root, query) {
   box.innerHTML = hits
     .map((g) => {
       const added = existing.has(String(g.genreId));
-      return `<div class="spread" style="margin-top:6px">
-        <span class="small">${escapeHtml(g.path)}<span class="muted"> / ${escapeHtml(g.genreId)}</span></span>
-        <button class="btn ${added ? '' : 'btn--primary'}" data-genre-add="${escapeHtml(g.genreId)}" ${added ? 'disabled' : ''}>
-          ${added ? '追加済み' : '追加'}
-        </button>
+      // ボタンの幅は固定にする。「追加」と「追加済み」で文字数が違うため、
+      // 成り行きにすると行ごとに大きさがばらついて押しにくい
+      return `<div class="genre-hit">
+        <span class="genre-hit__name">${escapeHtml(g.path)}<span class="muted"> / ${escapeHtml(g.genreId)}</span></span>
+        <button class="btn genre-hit__btn ${added ? '' : 'btn--primary'}" data-genre-add="${escapeHtml(g.genreId)}" ${added ? 'disabled' : ''}>${added ? '追加済み' : '追加'}</button>
       </div>`;
     })
     .join('');

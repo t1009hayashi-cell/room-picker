@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { DATA_DIR, loadConfig } from './config.js';
 import { rebuildIndex, readSales, readSnapshot, writeSales, writeSnapshot } from './io.js';
 import { buildDailySnapshot, makeLiveFetcher, type GenreFetcher } from './pipeline.js';
@@ -48,12 +49,18 @@ async function main(): Promise<void> {
   log(`room-assist: ${date} の抽出を開始します（${args.mock ? 'モック' : '実API'}）`);
   if (!args.mock) {
     // 値そのものは一切ログに出さない（Publicリポジトリのため）。
-    // 長さ・空白混入・引用符混入の有無だけを安全に確認する
+    // 長さ・空白混入・引用符混入の有無だけを安全に確認する。
+    // 指紋はハッシュの先頭8桁で、ここから元の値は復元できない。
+    // Secret を差し替えたときに実際に値が変わったかを判定するために出す。
+    const fingerprint = applicationId
+      ? createHash('sha256').update(applicationId).digest('hex').slice(0, 8)
+      : '(なし)';
     log(
       `RAKUTEN_APPLICATION_ID診断: 生の長さ=${rawApplicationId.length}文字 / trim後=${applicationId?.length ?? 0}文字 / ` +
         `前後に空白または改行あり=${rawApplicationId !== rawApplicationId.trim()} / ` +
         `引用符を含む=${/^["']|["']$/.test(rawApplicationId)} / ` +
-        `半角英数とハイフンのみで構成=${applicationId ? /^[A-Za-z0-9-]+$/.test(applicationId) : false}`,
+        `UUID形式=${applicationId ? /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(applicationId) : false} / ` +
+        `指紋=${fingerprint}`,
     );
   }
 

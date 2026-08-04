@@ -8,6 +8,7 @@ import * as store from '../lib/store.js';
 import { FIELD_LABELS, REQUIRED_FIELDS, buildResults, importCsv } from '../lib/csv.js';
 import { loadGenreMaster } from '../lib/dataLoader.js';
 import { DEFAULT_COMMISSION_RATE, searchGenres } from '../lib/genres.js';
+import { copyToClipboard } from '../lib/prompt.js';
 import { escapeHtml, fmtDateTime, fmtNum, fmtPercent, uuid } from '../lib/format.js';
 
 /** CSVインポートの途中状態（手動マッピング用） */
@@ -19,15 +20,37 @@ let genreMaster = { updatedAt: null, maxLevel: 0, genres: [] };
 /** 日次バッチを手動実行するためのGitHubの画面 */
 const ACTIONS_URL = 'https://github.com/t1009hayashi-cell/room-picker/actions/workflows/daily.yml';
 
+/**
+ * 取得対象ジャンルの設定ファイルをGitHub上で直接編集する画面。
+ * アプリからリポジトリに書き込むには書き込み権限のあるトークンが必要で、
+ * 公開サイトに置けないため、ユーザー自身に貼り付けてもらう導線にする。
+ */
+const GENRES_FILE_EDIT_URL = 'https://github.com/t1009hayashi-cell/room-picker/edit/main/config/genres.json';
+
+/**
+ * 表示するジャンルの一覧。
+ *
+ * `fetched: true` は日次データに実際に入っていたジャンル（＝取得対象になっている）。
+ * `fetched: false` はアプリ内で追加しただけで、まだ config/genres.json に
+ * 反映されていないジャンル。この区別が無いと「追加したのにデータが増えない」
+ * 理由が分からない（2026-08-04 に実際に起きた）。
+ */
 function genreRows() {
   const state = store.getState();
   const found = new Map();
   for (const dateKey of app.loadedDates) {
     for (const item of app.catalog?.byDiscovered.get(dateKey) ?? []) {
-      found.set(item.genreId, { genreId: item.genreId, genreName: item.genreName, commissionRate: item.genreCommissionRate });
+      found.set(item.genreId, {
+        genreId: item.genreId,
+        genreName: item.genreName,
+        commissionRate: item.genreCommissionRate,
+        fetched: true,
+      });
     }
   }
-  for (const extra of state.extraGenres) if (!found.has(extra.genreId)) found.set(extra.genreId, extra);
+  for (const extra of state.extraGenres) {
+    if (!found.has(extra.genreId)) found.set(extra.genreId, { ...extra, fetched: false });
+  }
   return [...found.values()];
 }
 
@@ -69,7 +92,10 @@ export async function renderSettings(root) {
   // ジャンル一覧は数百件あるので一度だけ読む。未生成でも空で返るため画面は止まらない
   if (genreMaster.genres.length === 0) genreMaster = await loadGenreMaster();
 
-  const genres = genreRows()
+  const rows = genreRows();
+  const notFetched = rows.filter((g) => !g.fetched);
+
+  const genres = rows
     .map((g) => {
       const rate = state.genreRateOverrides[g.genreId] ?? g.commissionRate;
       const enabled = s.genreEnabled?.[g.genreId] !== false;
@@ -77,6 +103,13 @@ export async function renderSettings(root) {
         <div class="spread">
           <strong>${escapeHtml(g.genreName)}</strong>
           <label class="small"><input type="checkbox" data-genre-enabled="${escapeHtml(g.genreId)}" ${enabled ? 'checked' : ''} /> 有効</label>
+        </div>
+        <div class="item__badges">
+          ${
+            g.fetched
+              ? '<span class="badge badge--posted">取得中</span>'
+              : '<span class="badge badge--warn">未反映（下の手順が必要）</span>'
+          }
         </div>
         <div class="row small muted">
           <span>genreId: ${escapeHtml(g.genreId)}</span>
@@ -134,16 +167,41 @@ export async function renderSettings(root) {
 
     <h2>対象ジャンル</h2>
     <p class="small muted">
-      有効／無効と料率はこのアプリの表示に即座に反映されます。
-      日次の取得対象そのものを変えるには、下の「config/genres.json 用のJSONをコピー」で
-      設定を書き出してリポジトリの <code>config/genres.json</code> に貼り付けてください
-      （<code>enabled: false</code> のジャンルは翌朝から取得されなくなります）。
+      「有効」のチェックと料率は、このアプリの表示にすぐ反映されます。
+      <strong>ただし、楽天から実際に取ってくるジャンルを変えるには下の3手順が必要です。</strong>
     </p>
+    ${
+      notFetched.length > 0
+        ? `<div class="warnbar warnbar--danger">
+            <strong>${notFetched.length}件のジャンルがまだ取得されていません</strong>（${escapeHtml(notFetched.map((g) => g.genreName).join('、'))}）。
+            アプリで追加しただけでは楽天から取ってきません。下の「反映のしかた」の3手順を行ってください。
+          </div>`
+        : ''
+    }
     ${genres || '<p class="empty">データを読み込むと表示されます。</p>'}
+
     <div class="card">
       <strong class="small">ジャンルを追加</strong>
       ${genreSearchHtml()}
-      <button class="btn btn--block" data-action="copy-genres">config/genres.json 用のJSONをコピー</button>
+    </div>
+
+    <div class="card">
+      <strong class="small">反映のしかた（この3手順で取得対象になります）</strong>
+      <p class="small muted" style="margin:6px 0">
+        1. 下のボタンで設定内容をコピーします
+      </p>
+      <button class="btn btn--block" data-action="copy-genres">① 設定内容をコピー</button>
+      <p class="small muted" style="margin:8px 0 0">
+        2. GitHubの設定ファイルを開き、中身をすべて消して貼り付けます
+      </p>
+      <a class="btn btn--block" href="${GENRES_FILE_EDIT_URL}" target="_blank" rel="noopener noreferrer">② 設定ファイルを開く</a>
+      <p class="small muted" style="margin:8px 0 0">
+        3. ページ下の「Commit changes」を押して保存します。
+        そのあと「データの更新」の「GitHubで今すぐ取得する」を実行すると、新しいジャンルのデータが作られます。
+      </p>
+      <p class="small muted" style="margin:8px 0 0">
+        「有効」のチェックを外したジャンルは、この手順のあと取得されなくなります。
+      </p>
     </div>
 
     <h2>セール日程</h2>
@@ -302,7 +360,7 @@ function renderGenreHits(root, query) {
           enabled: true,
         }),
       );
-      toast(`${genre.genreName} を追加しました。取得対象にするには下のJSONコピーが必要です`);
+      toast(`${genre.genreName} を追加しました。楽天から取ってくるには下の「反映のしかた」の3手順が必要です`);
       renderSettings(root);
     });
   });
@@ -423,8 +481,11 @@ function bind(root) {
       renderSettings(root);
     } else if (action === 'copy-genres') {
       const state = store.getState();
+      // ファイル全体を置き換える前提なので、_note も含めた完全な中身をコピーする
       const json = JSON.stringify(
         {
+          _note:
+            'commissionRate は API が affiliateRate を返さなかった場合のフォールバック値。API 値を常に優先する（仕様書 4.4）。',
           genres: genreRows().map((g) => ({
             genreId: g.genreId,
             genreName: g.genreName,
@@ -435,8 +496,12 @@ function bind(root) {
         null,
         2,
       );
-      await navigator.clipboard?.writeText(json).catch(() => {});
-      toast('config/genres.json 用のJSONをコピーしました');
+      const ok = await copyToClipboard(json);
+      toast(
+        ok
+          ? `${genreRows().length}件のジャンル設定をコピーしました。②で開いた画面に貼り付けてください`
+          : 'コピーに失敗しました',
+      );
     } else if (action === 'add-sale') {
       const name = root.querySelector('#new-sale-name').value.trim();
       const start = root.querySelector('#new-sale-start').value;

@@ -51,7 +51,23 @@ jobs:
           git add docs/data/genre-master.json
           if git diff --cached --quiet; then
             echo '変更なし'
-          else
-            git commit -m "data: ジャンルマスタを更新"
-            git push
+            exit 0
           fi
+          git commit -m "data: ジャンルマスタを更新"
+
+          # daily.yml と同じ理由。再実行時に push が拒否されるため積み直して再試行する
+          for i in 1 2 3; do
+            if git push origin HEAD:main; then
+              echo "push しました（${i}回目）"
+              exit 0
+            fi
+            echo "push が拒否されました。リモートを取り込んで積み直します（${i}回目）"
+            git fetch origin main
+            if ! git rebase origin/main; then
+              git rebase --abort || true
+              echo 'リベースできませんでした'
+              exit 1
+            fi
+          done
+          echo 'push を3回試しましたが通りませんでした'
+          exit 1

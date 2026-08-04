@@ -37,8 +37,19 @@ export interface ClientOptions {
    * 「specify valid applicationId」で弾かれる。自サイトのための取得であることを明示する。
    */
   siteUrl?: string | null;
+  /**
+   * 一時的な失敗（429・5xx・通信エラー）を何回まで試すか。既定は3回。
+   * 短い間隔で手動実行を繰り返すと 429 を返されることがあり、
+   * 1回で諦めると日次データが作られないまま終わってしまう。
+   */
+  maxAttempts?: number;
   fetchImpl?: typeof fetch;
   onLog?: (message: string) => void;
+}
+
+/** 一時的とみなすHTTPステータス。これ以外は再試行しても同じ結果になるので即座に失敗させる */
+function isRetriableStatus(status: number): boolean {
+  return status === 429 || status === 408 || status >= 500;
 }
 
 export interface FetchResult {
@@ -60,6 +71,7 @@ export class RakutenClient {
   private readonly intervalMs: number;
   private readonly formatVersion: 1 | 2;
   private readonly siteUrl: string | null;
+  private readonly maxAttempts: number;
   private readonly fetchImpl: typeof fetch;
   private readonly onLog: (message: string) => void;
   private lastRequestAt = 0;
@@ -79,6 +91,7 @@ export class RakutenClient {
     this.intervalMs = Math.max(1000, options.intervalMs ?? 1100);
     this.formatVersion = options.formatVersion ?? 2;
     this.siteUrl = options.siteUrl?.trim() || null;
+    this.maxAttempts = Math.max(1, options.maxAttempts ?? 3);
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.onLog = options.onLog ?? (() => {});
   }
@@ -108,39 +121,76 @@ export class RakutenClient {
     return { items: extractItems(json), title: typeof json.title === 'string' ? json.title : '' };
   }
 
-  /** 商品系とジャンル系でレスポンス構造が違うため、JSONのまま返す層を分けている */
+  /**
+   * 商品系とジャンル系でレスポンス構造が違うため、JSONのまま返す層を分けている。
+   *
+   * 429・5xx・通信エラーは一時的なものとして数回まで待って試し直す。
+   * 短い間隔で手動実行を繰り返すと楽天から 429 が返ることがあり、
+   * 1回で諦めるとその日のデータが作られないまま終わってしまう。
+   */
   private async requestJson(endpoint: string, params: Record<string, string | number | undefined>): Promise<unknown> {
-    await this.throttle();
-    const url = this.buildUrl(endpoint, params);
-    // アプリIDをログに残さない
-    this.onLog(`GET ${endpoint} ${JSON.stringify(params)}`);
+    let lastError: Error | null = null;
 
-    const headers: Record<string, string> = { 'User-Agent': 'room-assist/1.0' };
-    if (this.siteUrl) {
-      // 「許可されたウェブサイト」に登録した自サイトのための取得であることを明示する
-      headers.Referer = this.siteUrl;
-      try {
-        headers.Origin = new URL(this.siteUrl).origin;
-      } catch {
-        // URLとして壊れている場合は Origin を付けない
+    for (let attempt = 1; attempt <= this.maxAttempts; attempt += 1) {
+      await this.throttle();
+      const url = this.buildUrl(endpoint, params);
+      // アプリIDをログに残さない
+      this.onLog(`GET ${endpoint} ${JSON.stringify(params)}${attempt > 1 ? ` (再試行 ${attempt}/${this.maxAttempts})` : ''}`);
+
+      const headers: Record<string, string> = { 'User-Agent': 'room-assist/1.0' };
+      if (this.siteUrl) {
+        // 「許可されたウェブサイト」に登録した自サイトのための取得であることを明示する
+        headers.Referer = this.siteUrl;
+        try {
+          headers.Origin = new URL(this.siteUrl).origin;
+        } catch {
+          // URLとして壊れている場合は Origin を付けない
+        }
       }
-    }
 
-    const res = await this.fetchImpl(url, { headers });
-    if (!res.ok) {
+      let res: Response;
+      try {
+        res = await this.fetchImpl(url, { headers });
+      } catch (err) {
+        // 通信自体の失敗（DNS・接続断など）。待って試し直す
+        lastError = new Error(`楽天APIに接続できませんでした: ${(err as Error).message}`);
+        if (attempt >= this.maxAttempts) break;
+        await this.backoff(attempt, null);
+        continue;
+      }
+
+      if (res.ok) return await res.json();
+
       const body = await res.text().catch(() => '');
-      const detail = body
-        .slice(0, 200)
-        .replaceAll(this.applicationId, '***')
-        .replaceAll(this.accessKey, '***');
+      const detail = body.slice(0, 200).replaceAll(this.applicationId, '***').replaceAll(this.accessKey, '***');
       const hint =
         res.status === 400 && /applicationId|accessKey/i.test(body)
           ? '\nヒント: 楽天アプリ管理画面の「アプリケーションID」を RAKUTEN_APPLICATION_ID に、' +
             '「アクセスキー」を RAKUTEN_ACCESS_KEY に設定してください（2026年の新APIでは両方必須）'
-          : '';
-      throw new Error(`楽天API エラー: ${res.status} ${res.statusText} ${detail}${hint}`);
+          : res.status === 429
+            ? '\nヒント: 短い時間に何度も実行すると楽天側で制限されます。しばらく待ってから実行してください'
+            : '';
+      lastError = new Error(`楽天API エラー: ${res.status} ${res.statusText} ${detail}${hint}`);
+
+      // 一時的でないもの（認証エラーや404）は待っても変わらないので即座に投げる
+      if (!isRetriableStatus(res.status) || attempt >= this.maxAttempts) throw lastError;
+
+      this.onLog(`  ${res.status} を受けたので待って試し直します（${attempt}/${this.maxAttempts}）`);
+      await this.backoff(attempt, res.headers.get('Retry-After'));
     }
-    return await res.json();
+
+    throw lastError ?? new Error('楽天APIの呼び出しに失敗しました');
+  }
+
+  /** 再試行までの待ち時間。Retry-After があれば従い、無ければ回数に応じて延ばす */
+  private async backoff(attempt: number, retryAfter: string | null): Promise<void> {
+    const fromHeader = Number(retryAfter);
+    const waitMs =
+      Number.isFinite(fromHeader) && fromHeader > 0
+        ? Math.min(fromHeader * 1000, 60_000)
+        : Math.min(this.intervalMs * 2 ** attempt, 30_000);
+    this.onLog(`  ${Math.round(waitMs / 1000)}秒待ちます`);
+    await sleep(waitMs);
   }
 
   /** ランキングAPI（仕様書 4.1） */

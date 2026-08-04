@@ -11,7 +11,8 @@
 // v3: ジャンル名検索・絞り込み追加・並び順・URLコピー（2026-08-03）
 // v4: 予約投稿・投稿文コピー・表示の絞り込み（2026-08-03）
 // v5: 予約/投稿済みを日付ごとに記録・AI用プロンプト廃止（2026-08-03）
-const SHELL_VERSION = 'v5';
+// v6: ジャンルの未反映を明示・反映手順の導線（2026-08-04）
+const SHELL_VERSION = 'v6';
 const DATA_VERSION = 'v1';
 const SHELL_CACHE = `room-shell-${SHELL_VERSION}`;
 const DATA_CACHE = `room-data-${DATA_VERSION}`;

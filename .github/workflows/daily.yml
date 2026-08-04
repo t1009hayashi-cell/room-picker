@@ -85,7 +85,25 @@ jobs:
           git add docs/data
           if git diff --cached --quiet; then
             echo '変更なし'
-          else
-            git commit -m "data: $(TZ=Asia/Tokyo date +%Y-%m-%d) の抽出結果"
-            git push
+            exit 0
           fi
+          git commit -m "data: $(TZ=Asia/Tokyo date +%Y-%m-%d) の抽出結果"
+
+          # GitHubの「再実行」は最初に実行したときのコミットをチェックアウトするため、
+          # 先の試行がすでに push していると push が拒否される（2026-08-04 の実行#19で発生）。
+          # リモートを取り込んで積み直してから再試行する。
+          for i in 1 2 3; do
+            if git push origin HEAD:main; then
+              echo "push しました（${i}回目）"
+              exit 0
+            fi
+            echo "push が拒否されました。リモートを取り込んで積み直します（${i}回目）"
+            git fetch origin main
+            if ! git rebase origin/main; then
+              git rebase --abort || true
+              echo 'リベースできませんでした。データファイルが競合しています'
+              exit 1
+            fi
+          done
+          echo 'push を3回試しましたが通りませんでした'
+          exit 1

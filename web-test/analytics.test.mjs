@@ -129,13 +129,14 @@ describe('集計指標（仕様書 10.4 / 10.5）', () => {
     assert.equal(Math.round(rows[0].rewardPerPost), Math.round((324 * 2) / MIN_SAMPLE));
   });
 
-  it('1行目の文字数帯で分ける', () => {
-    assert.equal(firstLineBand(24), '〜25');
-    assert.equal(firstLineBand(32), '26〜35');
-    assert.equal(firstLineBand(40), '36〜');
-    const posts = [post({ postId: 'a', firstLineLength: 24 }), post({ postId: 'b', firstLineLength: 33, itemNameRaw: 'x' })];
+  it('ヘッダーの文字数帯で分ける（推奨16〜24文字の前後で区切る）', () => {
+    assert.equal(firstLineBand(12), '〜15');
+    assert.equal(firstLineBand(20), '16〜24');
+    // 旧データ（1行目30〜35文字で作っていた投稿）はここにまとまる
+    assert.equal(firstLineBand(32), '25〜');
+    const posts = [post({ postId: 'a', firstLineLength: 20 }), post({ postId: 'b', firstLineLength: 12, itemNameRaw: 'x' })];
     const { byPostId } = matchResults(posts, []);
-    assert.deepEqual(byFirstLineBand(posts, byPostId).map((r) => r.key).sort(), ['26〜35', '〜25']);
+    assert.deepEqual(byFirstLineBand(posts, byPostId).map((r) => r.key).sort(), ['16〜24', '〜15']);
   });
 
   it('確定・未確定・破棄を区別する', () => {
@@ -268,16 +269,29 @@ describe('投稿文テキストの分解', () => {
     assert.deepEqual(hashtags, []);
   });
 
-  it('生成ルールへの適合を測れる', () => {
-    const ok = measureComment(
-      `${'あ'.repeat(32)}\n${'い'.repeat(30)}\n${'う'.repeat(25)}\n#a #b #c`,
-    );
-    assert.equal(ok.firstLineLength, 32);
-    assert.equal(ok.totalLength, 87);
+  it('推奨の型への適合を測れる', () => {
+    // ヘッダー20文字（数字あり）＋本文で計140文字＋タグ3個＝適合
+    const header = `1本145円${'あ'.repeat(14)}`;
+    const ok = measureComment(`${header}\n${'い'.repeat(60)}\n${'う'.repeat(60)}\n#a #b #c`);
+    assert.equal(ok.firstLineLength, 20);
+    assert.equal(ok.totalLength, 140);
     assert.equal(ok.lineCount, 3);
+    assert.equal(ok.headerHasNumber, true);
+    assert.equal(ok.endsWithPeriod, false);
     assert.equal(ok.withinRules, true);
 
+    // 短すぎる
     assert.equal(measureComment('短い\n#a #b #c').withinRules, false);
+
+    // ヘッダーに数字が無いと不適合（プロンプトが必須としている）
+    const noNumber = measureComment(`${'あ'.repeat(20)}\n${'い'.repeat(60)}\n${'う'.repeat(60)}\n#a #b #c`);
+    assert.equal(noNumber.headerHasNumber, false);
+    assert.equal(noNumber.withinRules, false);
+
+    // 文末が「。」だと不適合
+    const period = measureComment(`${header}\n${'い'.repeat(60)}\n${'う'.repeat(59)}。\n#a #b #c`);
+    assert.equal(period.endsWithPeriod, true);
+    assert.equal(period.withinRules, false);
   });
 });
 

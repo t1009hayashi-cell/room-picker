@@ -97,6 +97,8 @@ function enrich(
         postageFlag: base.postageFlag,
         pointRate: base.pointRate,
         month,
+        // 期間限定価格の期限。セール速報の角度と「期限を必ず併記する」に使う
+        priceEndTime: base.priceEndTime,
       },
       scoring,
       ngWords,

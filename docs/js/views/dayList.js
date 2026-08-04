@@ -50,10 +50,31 @@ const STATUS_FILTERS = [
 ];
 let statusId = 'all';
 
+/** ジャンルでの絞り込み。'all' はすべて */
+let genreFilter = 'all';
+
 function applyStatus(items, state, dateKey) {
   const filter = STATUS_FILTERS.find((f) => f.id === statusId) ?? STATUS_FILTERS[0];
   if (filter.id === 'all') return items;
   return items.filter((item) => filter.test(state, store.dayItemKey(dateKey, item.itemCode)));
+}
+
+function applyGenre(items) {
+  if (genreFilter === 'all') return items;
+  return items.filter((item) => String(item.genreId) === genreFilter);
+}
+
+/** その日に出ているジャンルと件数。選択中のジャンルがその日に無ければ選択を解除する */
+function genreChoices(items) {
+  const counts = new Map();
+  for (const item of items) {
+    const key = String(item.genreId);
+    if (!counts.has(key)) counts.set(key, { genreId: key, genreName: item.genreName, count: 0 });
+    counts.get(key).count += 1;
+  }
+  const list = [...counts.values()].sort((a, b) => b.count - a.count || a.genreName.localeCompare(b.genreName, 'ja'));
+  if (genreFilter !== 'all' && !counts.has(genreFilter)) genreFilter = 'all';
+  return list;
 }
 
 function sortItems(items) {
@@ -97,17 +118,19 @@ export async function renderDayList(root, dateKey) {
   const mode = state.settings.calendarMode;
   setAppBar(`${dateKey}（${weekdayOf(dateKey)}）`, { back: true });
 
+  // ジャンルの選択肢はその日の全候補から作る（他の絞り込みで選択肢が消えないように）
+  const dayItems = itemsForDate(dateKey);
+  const genres = genreChoices(dayItems);
+
   // 日付・モード・絞り込み・並び順が変わったら先頭から描き直す
-  const key = `${dateKey}|${mode}|${[...activeChips].sort().join(',')}|${showExcluded}|${sortId}|${statusId}`;
+  const key = `${dateKey}|${mode}|${[...activeChips].sort().join(',')}|${showExcluded}|${sortId}|${statusId}|${genreFilter}`;
   if (key !== lastKey) {
     lastKey = key;
     visibleCount = PAGE_SIZE;
   }
 
-  const items = sortItems(applyStatus(applyChips(itemsForDate(dateKey), activeChips), state, dateKey));
-  const reservedCount = itemsForDate(dateKey).filter(
-    (item) => state.reserved[store.dayItemKey(dateKey, item.itemCode)],
-  ).length;
+  const items = sortItems(applyGenre(applyStatus(applyChips(dayItems, activeChips), state, dateKey)));
+  const reservedCount = dayItems.filter((item) => state.reserved[store.dayItemKey(dateKey, item.itemCode)]).length;
   const totalReward = items.reduce((sum, item) => sum + (item.estimatedReward ?? 0), 0);
   const shown = items.slice(0, visibleCount);
   const rest = items.length - shown.length;
@@ -128,8 +151,20 @@ export async function renderDayList(root, dateKey) {
       `<option value="${f.id}" ${f.id === statusId ? 'selected' : ''}>${f.label}${f.id === 'reserved' && reservedCount > 0 ? `（${reservedCount}）` : ''}</option>`,
   ).join('');
 
+  const genreOptions = [
+    `<option value="all" ${genreFilter === 'all' ? 'selected' : ''}>すべてのジャンル（${dayItems.length}）</option>`,
+    ...genres.map(
+      (g) =>
+        `<option value="${escapeHtml(g.genreId)}" ${genreFilter === g.genreId ? 'selected' : ''}>${escapeHtml(g.genreName)}（${g.count}）</option>`,
+    ),
+  ].join('');
+
   root.innerHTML = `
     <div class="chips">${chips}${excludedChip}</div>
+    <label class="row small muted" style="margin-bottom:6px;gap:4px">
+      <span>ジャンル</span>
+      <select id="day-genre" style="width:auto;flex:1">${genreOptions}</select>
+    </label>
     <div class="row small muted" style="margin-bottom:8px">
       <label class="row" style="flex:1;gap:4px"><span>表示</span>
         <select id="day-status" style="width:auto;flex:1">${statusOptions}</select>
@@ -151,6 +186,7 @@ export async function renderDayList(root, dateKey) {
 
 /** 0件のときの案内。絞り込みのせいで0件なのか、その日に候補が無いのかを言い分ける */
 function emptyMessage() {
+  if (genreFilter !== 'all') return 'このジャンルに該当する商品はありません。ジャンルを「すべて」に戻すと表示されます。';
   if (statusId === 'reserved') return 'この日に予約した商品はありません。商品の「予約する」を押すとここに集まります。';
   if (statusId === 'posted') return 'この日に投稿済みの商品はありません。';
   if (statusId === 'unposted') return '未投稿の商品はありません。';
@@ -272,6 +308,7 @@ function cardHtml(item, dateKey, state) {
 
     <div class="row" style="margin-top:8px">
       <button class="btn btn--primary" data-copy-comment="${escapeHtml(item.itemCode)}">投稿文をコピー</button>
+      <button class="btn" data-copy-name="${escapeHtml(item.itemCode)}">商品名をコピー</button>
       <button class="btn" data-copy-url="${escapeHtml(item.itemCode)}" ${item.itemUrl ? '' : 'disabled'}>URLをコピー</button>
       <a class="btn" href="${escapeHtml(item.itemUrl)}" target="_blank" rel="noopener noreferrer">楽天で開く</a>
     </div>
@@ -302,7 +339,14 @@ function updateCounter(root, code) {
   const counter = root.querySelector(`[data-counter="${CSS.escape(code)}"]`);
   if (!area || !counter) return;
   const m = measureComment(area.value);
-  counter.innerHTML = `1行目 ${m.firstLineLength}文字 / 本文 ${m.totalLength}文字 / ${m.lineCount}行 / タグ${m.hashtagCount}個 ${m.withinRules ? '' : '<span class="badge badge--warn">推奨: 1行目30〜35・本文80〜150・3行以内・タグ3〜4個</span>'}`;
+  const notes = [];
+  if (!m.headerHasNumber) notes.push('ヘッダーに数字を1つ');
+  if (m.endsWithPeriod) notes.push('文末の「。」を外す');
+  counter.innerHTML =
+    `ヘッダー ${m.firstLineLength}文字 / 本文 ${m.totalLength}文字 / ${m.lineCount}行 / タグ${m.hashtagCount}個 ` +
+    (m.withinRules
+      ? ''
+      : `<span class="badge badge--warn">推奨: ヘッダー16〜24・本文120〜180・6行以内・タグ3〜6個${notes.length ? '／' + notes.join('・') : ''}</span>`);
 }
 
 function bind(root, dateKey) {
@@ -323,6 +367,11 @@ function bind(root, dateKey) {
 
   root.querySelector('#day-status')?.addEventListener('change', (event) => {
     statusId = event.target.value;
+    renderDayList(root, dateKey);
+  });
+
+  root.querySelector('#day-genre')?.addEventListener('change', (event) => {
+    genreFilter = event.target.value;
     renderDayList(root, dateKey);
   });
 
@@ -403,6 +452,16 @@ function bind(root, dateKey) {
       store.setReserved(dateKey, code, true, { scheduledDate: dateKey, text, angle: state.postedAngle[code] });
       toast(`${dateKey} に予約しました。当日この日付を開くと「表示: 予約のみ」で出せます`);
       renderDayList(root, dateKey);
+    });
+  });
+
+  root.querySelectorAll('[data-copy-name]').forEach((el) => {
+    el.addEventListener('click', async () => {
+      const item = findItem(el.dataset.copyName);
+      if (!item?.itemName) return toast('商品名が取得できていません');
+      // 楽天ROOM内の検索に貼るため、商品名は一切加工せずそのままコピーする
+      const ok = await copyToClipboard(item.itemName);
+      toast(ok ? '商品名をコピーしました。ROOMの検索に貼り付けてください' : 'コピーに失敗しました');
     });
   });
 

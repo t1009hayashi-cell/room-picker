@@ -129,11 +129,15 @@ export function charLength(text) {
   return Array.from(String(text ?? '')).length;
 }
 
-/** 1行目の文字数帯（仕様書 10.4） */
+/**
+ * ヘッダー（1行目）の文字数帯（仕様書 10.4）。
+ * 推奨が16〜24文字になったため、その前後で分かれるように区切る。
+ * 旧データ（30〜35文字で作っていた投稿）は「25〜」にまとまる。
+ */
 export function firstLineBand(length) {
-  if (length <= 25) return '〜25';
-  if (length <= 35) return '26〜35';
-  return '36〜';
+  if (length <= 15) return '〜15';
+  if (length <= 24) return '16〜24';
+  return '25〜';
 }
 
 export function uuid() {

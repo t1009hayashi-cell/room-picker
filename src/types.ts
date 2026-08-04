@@ -229,6 +229,7 @@ export interface ScoringConfig {
     infiniteEndMarker: string;
   };
   comment: {
+    /** ヘッダー（1行目）の文字数。ROOMのフィードでは冒頭しか表示されない */
     firstLineMin: number;
     firstLineMax: number;
     totalMin: number;
@@ -236,6 +237,8 @@ export interface ScoringConfig {
     maxLines: number;
     hashtagMin: number;
     hashtagMax: number;
+    /** 1商品につき作る案の数。増やすと日次JSONが大きくなる */
+    draftCount?: number;
   };
   caption: { shortLength: number };
   analytics: { minSampleSize: number };

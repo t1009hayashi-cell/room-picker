@@ -1,20 +1,17 @@
 {
   "_note": "仕様書 6.2 / 6.3 の係数はここ1箇所に集約する。運用しながら調整する前提。",
-
   "filters": {
     "minPrice": 3000,
     "minReviewCount": 500,
     "excludeOutOfStock": true,
     "excludeShippingFeeSeparate": true
   },
-
   "reward": {
     "rewardCapPerItem": 1000,
     "roomRankBonusRate": 0.02,
     "roomRankBonusCap": 1000,
     "rateBoostThreshold": 0.05
   },
-
   "hotScore": {
     "rankGainPerRank": 5,
     "newEntryBonus": 30,
@@ -26,27 +23,25 @@
     "rateBoostedBonus": 40,
     "pointRateCap": 20
   },
-
   "sales": {
     "minDistinctShops": 3,
     "maxDurationDays": 60,
     "infiniteEndMarker": "9999-12-31 23:59"
   },
-
   "comment": {
-    "firstLineMin": 30,
-    "firstLineMax": 35,
-    "totalMin": 80,
-    "totalMax": 150,
-    "maxLines": 3,
+    "_note": "ヘッダーは約20文字。ROOMのフィードでは冒頭しか表示されないため（投稿プロンプトの型に合わせている）",
+    "firstLineMin": 16,
+    "firstLineMax": 24,
+    "totalMin": 120,
+    "totalMax": 180,
+    "maxLines": 6,
     "hashtagMin": 3,
-    "hashtagMax": 4
+    "hashtagMax": 6,
+    "draftCount": 3
   },
-
   "caption": {
     "shortLength": 300
   },
-
   "analytics": {
     "minSampleSize": 10
   }

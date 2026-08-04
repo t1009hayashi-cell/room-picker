@@ -193,6 +193,30 @@ h2:first-child {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
+  /* a要素にも .btn を使うため。指定しないと「楽天で開く」だけ下線が出る */
+  text-decoration: none;
+  text-align: center;
+}
+
+/**
+ * 商品カードの操作ボタン。
+ * flex で並べると最後の1つだけ次の行に落ちて不揃いに見えるため、
+ * 2列のグリッドに固定して幅と位置を揃える。
+ */
+.actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.actions > .btn {
+  width: 100%;
+  /* 文言の長さが違ってもボタンの高さを揃える */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
 }
 
 .btn--primary {
@@ -627,6 +651,26 @@ details[open] > summary::before {
 .warnbar--danger {
   border-left-color: var(--danger);
   background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+
+/**
+ * 投稿文の推奨値の案内。
+ * .badge は white-space: nowrap なので、文言が伸びると枠から飛び出す
+ * （実機で「推奨: …ヘッダーに数字を1つ」が画面外にはみ出した）。
+ * ここは折り返す前提の要素として分ける。
+ */
+.hint {
+  display: block;
+  margin-top: 4px;
+  padding: 5px 8px;
+  border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);
+  border-radius: 6px;
+  color: var(--warn);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.5;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 /* ---- popup / toast ---- */

@@ -8,6 +8,7 @@ import { applyChips, CHIP_FILTERS, isLimitedTimePrice, REASON_LABELS, sameShopPo
 import { copyToClipboard } from '../lib/prompt.js';
 import { isDuringSale } from '../lib/schedule.js';
 import { measureComment, splitComment } from '../lib/commentText.js';
+import { toSearchQuery } from '../lib/itemName.js';
 import * as store from '../lib/store.js';
 import {
   charLength,
@@ -306,13 +307,13 @@ function cardHtml(item, dateKey, state) {
     <textarea data-comment="${escapeHtml(item.itemCode)}" aria-label="投稿文">${escapeHtml(commentText)}</textarea>
     <p class="small muted" data-counter="${escapeHtml(item.itemCode)}"></p>
 
-    <div class="row" style="margin-top:8px">
+    <div class="actions">
       <button class="btn btn--primary" data-copy-comment="${escapeHtml(item.itemCode)}">投稿文をコピー</button>
       <button class="btn" data-copy-name="${escapeHtml(item.itemCode)}">商品名をコピー</button>
       <button class="btn" data-copy-url="${escapeHtml(item.itemCode)}" ${item.itemUrl ? '' : 'disabled'}>URLをコピー</button>
       <a class="btn" href="${escapeHtml(item.itemUrl)}" target="_blank" rel="noopener noreferrer">楽天で開く</a>
     </div>
-    <div class="row" style="margin-top:6px">
+    <div class="spread" style="margin-top:8px">
       <span class="small muted">投稿予定日</span>
       <input type="date" value="${escapeHtml(scheduled)}" data-schedule="${escapeHtml(item.itemCode)}" data-schedule-from="${escapeHtml(scheduled)}" style="width:auto" />
     </div>
@@ -343,10 +344,10 @@ function updateCounter(root, code) {
   if (!m.headerHasNumber) notes.push('ヘッダーに数字を1つ');
   if (m.endsWithPeriod) notes.push('文末の「。」を外す');
   counter.innerHTML =
-    `ヘッダー ${m.firstLineLength}文字 / 本文 ${m.totalLength}文字 / ${m.lineCount}行 / タグ${m.hashtagCount}個 ` +
+    `ヘッダー ${m.firstLineLength}文字 / 本文 ${m.totalLength}文字 / ${m.lineCount}行 / タグ${m.hashtagCount}個` +
     (m.withinRules
       ? ''
-      : `<span class="badge badge--warn">推奨: ヘッダー16〜24・本文120〜180・6行以内・タグ3〜6個${notes.length ? '／' + notes.join('・') : ''}</span>`);
+      : `<span class="hint">推奨: ヘッダー16〜24・本文120〜180・6行以内・タグ3〜6個${notes.length ? '／' + notes.join('・') : ''}</span>`);
 }
 
 function bind(root, dateKey) {
@@ -459,9 +460,11 @@ function bind(root, dateKey) {
     el.addEventListener('click', async () => {
       const item = findItem(el.dataset.copyName);
       if (!item?.itemName) return toast('商品名が取得できていません');
-      // 楽天ROOM内の検索に貼るため、商品名は一切加工せずそのままコピーする
-      const ok = await copyToClipboard(item.itemName);
-      toast(ok ? '商品名をコピーしました。ROOMの検索に貼り付けてください' : 'コピーに失敗しました');
+      // 楽天の商品名は長すぎてROOMの検索で弾かれるため、検索用に短くしてコピーする
+      const query = toSearchQuery(item.itemName);
+      const ok = await copyToClipboard(query);
+      // 何をコピーしたか見せる。短くしている以上、中身を確認できないと不安になる
+      toast(ok ? `検索用にコピーしました: ${query}` : 'コピーに失敗しました', 3200);
     });
   });
 

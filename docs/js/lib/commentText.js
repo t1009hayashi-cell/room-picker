@@ -6,17 +6,38 @@
 
 import { charLength } from './format.js';
 
-/** 末尾のハッシュタグ行を本文から切り離す */
+/** その行がハッシュタグだけで構成されているか */
+function isHashtagLine(line) {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith('#')) return false;
+  return trimmed.split(/[\s　]+/).every((token) => token.startsWith('#'));
+}
+
+function tagsOf(line) {
+  return line.trim().split(/[\s　]+/).filter((tag) => tag.startsWith('#'));
+}
+
+/**
+ * ハッシュタグ行を本文から切り離す。
+ *
+ * 末尾に置くのが基本だが、投稿プロンプトは「ハッシュタグを1行目に置く形式も上位に見られる」
+ * として先頭に置く形も認めている。先頭に置いた投稿でタグ0個と数えてしまうと、
+ * 編集欄に常に警告が出て、投稿ログのハッシュタグも空で保存されてしまう。
+ */
 export function splitComment(text) {
-  const lines = String(text ?? '').split('\n');
-  const last = lines[lines.length - 1]?.trim() ?? '';
-  if (lines.length > 1 && last.startsWith('#')) {
-    return {
-      body: lines.slice(0, -1).join('\n').trimEnd(),
-      hashtags: last.split(/[\s　]+/).filter((tag) => tag.startsWith('#')),
-    };
+  const raw = String(text ?? '');
+  const lines = raw.split('\n');
+  if (lines.length > 1) {
+    const last = lines[lines.length - 1] ?? '';
+    if (isHashtagLine(last)) {
+      return { body: lines.slice(0, -1).join('\n').trimEnd(), hashtags: tagsOf(last) };
+    }
+    const first = lines[0] ?? '';
+    if (isHashtagLine(first)) {
+      return { body: lines.slice(1).join('\n').trim(), hashtags: tagsOf(first) };
+    }
   }
-  return { body: String(text ?? '').trim(), hashtags: [] };
+  return { body: raw.trim(), hashtags: [] };
 }
 
 export function joinComment(body, hashtags) {

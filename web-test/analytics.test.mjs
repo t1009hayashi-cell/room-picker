@@ -269,6 +269,23 @@ describe('投稿文テキストの分解', () => {
     assert.deepEqual(hashtags, []);
   });
 
+  it('ハッシュタグを1行目に置いた投稿も切り離せる（プロンプトが認めている形）', () => {
+    const { body, hashtags } = splitComment('#おせち早割 #2027おせち #年末の準備\n\n＼8月に予約する人／\n✅4〜5人前');
+    assert.deepEqual(hashtags, ['#おせち早割', '#2027おせち', '#年末の準備']);
+    assert.equal(body, '＼8月に予約する人／\n✅4〜5人前');
+  });
+
+  it('1行目にタグを置いた投稿でもタグ数を正しく数える', () => {
+    // 数えられないと編集欄に常に警告が出て、投稿ログのタグも空になる
+    assert.equal(measureComment('#a #b #c\n本文です').hashtagCount, 3);
+  });
+
+  it('タグと本文が混ざった行はタグ行とみなさない', () => {
+    const { body, hashtags } = splitComment('#タグ から始まる本文\n2行目');
+    assert.deepEqual(hashtags, []);
+    assert.equal(body, '#タグ から始まる本文\n2行目');
+  });
+
   it('推奨の型への適合を測れる', () => {
     // ヘッダー20文字（数字あり）＋本文で計140文字＋タグ3個＝適合
     const header = `1本145円${'あ'.repeat(14)}`;

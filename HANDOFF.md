@@ -414,6 +414,21 @@ https://openapi.rakuten.co.jp/ichibagt/api/IchibaGenre/Search/20260701
 **アプリからリポジトリに直接書き込むことはできない**（書き込み権限のあるトークンが
 必要で、公開サイトに置けない）。ユーザーが貼り付ける前提の導線しか作れない。
 
+### GitHub Pages のデプロイが Timeout で落ちることがある（2026-08-06）
+
+コミット `275ced0` のとき、`pages build and deployment` の
+**build と Upload artifact は成功したのに deploy だけが `Timeout reached, aborting!` で失敗**した。
+GitHub側の一時的な失敗で、コードのプッシュは完了している。
+
+見分け方と対処:
+
+- 症状は「プッシュは通っているのに公開URLのファイルが古いまま」
+- `curl -s https://api.github.com/repos/<repo>/actions/runs?per_page=5` で
+  `pages build and deployment` の conclusion を見る
+- 直し方は**再デプロイを起こすだけ**。GitHubの画面で該当実行の「Re-run failed jobs」を押すか、
+  何かコミットを1つ積む（Pagesはmainへのpushで動く）
+- **`docs/` の中身は正しいので、コードを直す必要はない**
+
 ### GitHub Actions の「再実行」でコミットが失敗する（2026-08-04）
 
 **再実行は最初に実行したときのコミットをチェックアウトする。**

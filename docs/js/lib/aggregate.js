@@ -192,6 +192,30 @@ export function filterByPeriod(items, days, field, now = new Date()) {
  * Phase 5: 実料率を根拠に、ジャンル設定の料率を更新する提案を作る。
  * サンプルが少ないうちは提案しない（10.5 と同じ理由）。
  */
+/**
+ * ジャンルの偏りを見る（追加要件 5.1）。
+ *
+ * キッチン用品は耐久財でリピートしないため主力にしない。
+ * **食品アカウントとしての一貫性を保つため、直近の投稿に占める比率が上限を超えたら警告する。**
+ */
+export const KITCHEN_GENRE_ID = '558944';
+export const KITCHEN_RATIO_LIMIT = 0.3;
+
+export function genreRatio(posts, genreId, days = 30, now = new Date()) {
+  const recent = filterByPeriod(posts, days, 'postedAt', now);
+  const total = recent.length;
+  const count = recent.filter((post) => String(post.genreId) === String(genreId)).length;
+  return {
+    days,
+    total,
+    count,
+    // 0件のときは比率を出さない（0%と表示すると「問題なし」に見えてしまう）
+    ratio: total === 0 ? null : count / total,
+    limit: KITCHEN_RATIO_LIMIT,
+    overLimit: total > 0 && count / total > KITCHEN_RATIO_LIMIT,
+  };
+}
+
 export function buildRateSuggestions(comparison, currentRates) {
   return comparison
     .filter((row) => row.actualRate !== null && row.posts >= MIN_SAMPLE && row.salesAmount > 0)

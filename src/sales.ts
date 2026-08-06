@@ -95,6 +95,20 @@ export function collectSaleInputs(items: NormalizedItem[]): SaleCandidateInput[]
  * 自動検出と手動登録が重複した場合は手動を優先する（仕様書 5.2）。
  * 自動検出分は再生成のたびに置き換えるが、ユーザーが付けた userLabel は引き継ぐ。
  */
+/**
+ * 指定時刻がいずれかのセール期間に入っているか（追加要件 4章の dealScore に使う）。
+ * 恒常設定（9999-12-31 など極端に長い期間）は detectSales 側で弾かれているため、ここでは素直に判定する。
+ */
+export function isDuringSaleAt(sales: SaleEntry[], at: Date): boolean {
+  const t = at.getTime();
+  return sales.some((sale) => {
+    const start = Date.parse(sale.start);
+    const end = Date.parse(sale.end);
+    if (Number.isNaN(start) || Number.isNaN(end)) return false;
+    return start <= t && t <= end;
+  });
+}
+
 export function mergeSales(previous: SaleEntry[], detected: SaleEntry[]): SaleEntry[] {
   const manual = previous.filter((s) => s.source === 'manual');
   const prevAutoById = new Map(previous.filter((s) => s.source === 'auto').map((s) => [s.id, s]));

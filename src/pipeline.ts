@@ -1,12 +1,15 @@
 import type { AppConfig } from './config.js';
 import { buildDraftComments } from './comment.js';
 import { buildPrevRankIndex, calcRankDiff, type PrevRankIndex } from './diff.js';
+import { calcPointBoost, extractDiscount } from './discount.js';
 import { evaluateExclusion } from './filter.js';
 import { mergeByItemCode, normalizeItem, sortByRank, type NormalizedBase } from './normalize.js';
 import type { FetchResult, RakutenClient } from './rakuten/client.js';
+import { ReviewUrlResolver } from './rakuten/itemPage.js';
 import { calcEstimatedReward } from './reward.js';
-import { calcHotScore } from './score.js';
-import type { DailySnapshot, GenreConfig, GenreSnapshot, NormalizedItem } from './types.js';
+import { calcDealScore, calcHotScore } from './score.js';
+import { isDuringSaleAt } from './sales.js';
+import type { DailySnapshot, GenreConfig, GenreSnapshot, NormalizedItem, SaleEntry } from './types.js';
 import { addDays, jstDayStart, nowJstIso, toJstDateKey } from './util/datetime.js';
 
 export interface GenreFetcher {
@@ -49,6 +52,17 @@ export interface BuildOptions {
   now: Date;
   applicationId?: string | null;
   generatedBy: 'live' | 'mock';
+  /**
+   * dealScore の「セール期間中」判定に使う（追加要件 4章）。
+   * その日のセールはこの実行の結果から検出されるため、**前回までに検出済みのもの**を渡す。
+   * セールは数日続くので前回分でも判定できる。
+   */
+  knownSales?: SaleEntry[];
+  /**
+   * レビューURLの取得（追加要件 6章）。除外条件を通過した商品にだけ使う。
+   * 未指定なら取得しない（モック実行やテストでは外部にアクセスしない）。
+   */
+  reviewUrlResolver?: ReviewUrlResolver | null;
   onLog?: (message: string) => void;
 }
 
@@ -64,6 +78,19 @@ function enrich(
 
   const diff = calcRankDiff(base.itemCode, base.rank, base.source, prevIndex);
   const reward = calcEstimatedReward(base, scoring);
+
+  // クーポン・割引はテキストからの抽出（追加要件 2章）。数値としてのみ保持する
+  const discount = extractDiscount(base.itemName, base.catchcopy, options.now);
+  const pointBoost = calcPointBoost(base.pointRate, base.pointRateEnd, scoring);
+  const dealScore = calcDealScore(
+    {
+      discount,
+      pointBoost,
+      duringSale: isDuringSaleAt(options.knownSales ?? [], earliestPostingDate),
+    },
+    scoring,
+  );
+
   const hotScore = calcHotScore(
     {
       source: base.source,
@@ -78,7 +105,8 @@ function enrich(
     },
     scoring,
   );
-  const exclusion = evaluateExclusion(base, scoring, ngWords, earliestPostingDate);
+  // 新着ブースト（追加要件 1.2）の判定に順位変動が要るため、diff を計算したあとで除外を評価する
+  const exclusion = evaluateExclusion({ ...base, rankChange: diff.rankChange }, scoring, ngWords, earliestPostingDate);
 
   return {
     ...base,
@@ -86,6 +114,13 @@ function enrich(
     estimatedReward: reward.estimatedReward,
     rewardCapApplied: reward.rewardCapApplied,
     hotScore,
+    dealScore,
+    pointBoost,
+    discount,
+    // レビューURLは除外を通過した商品にだけ後段で埋める（追加要件 6章）
+    shopBid: null,
+    itemNumericId: null,
+    reviewUrl: null,
     ...exclusion,
     draftComments: buildDraftComments(
       {
@@ -95,7 +130,9 @@ function enrich(
         reviewCount: base.reviewCount,
         reviewAverage: base.reviewAverage,
         postageFlag: base.postageFlag,
-        pointRate: base.pointRate,
+        // 追加要件3章: weak（3〜4倍）は投稿文で数字を出さない。
+        // 5,000円で3倍だと上乗せは約100円分で、「お得」と言い切るには弱いため
+        pointRate: pointBoost === 'strong' ? base.pointRate : 0,
         month,
         // 期間限定価格の期限。セール速報の角度と「期限を必ず併記する」に使う
         priceEndTime: base.priceEndTime,
@@ -149,8 +186,22 @@ export async function buildGenreSnapshot(
   const merged = mergeByItemCode(rankingItems, searchItems);
   const items = merged.map((base) => enrich(base, genre, options, prevIndex, earliestPostingDate, month));
 
+  // レビューURL（追加要件 6章）。1商品1リクエストなので除外を通過したものだけに絞る
+  const resolver = options.reviewUrlResolver;
+  if (resolver) {
+    const targets = items.filter((item) => !item.excluded);
+    for (const item of targets) {
+      const ids = await resolver.resolve(item.itemUrl);
+      item.shopBid = ids.shopBid;
+      item.itemNumericId = ids.itemNumericId;
+      item.reviewUrl = ids.reviewUrl;
+    }
+  }
+
+  const kept = items.filter((i) => !i.excluded);
   log(
-    `  ${genre.genreName}: ranking=${rankingItems.length} search=${searchItems.length} merged=${items.length} 除外=${items.filter((i) => i.excluded).length}`,
+    `  ${genre.genreName}: ranking=${rankingItems.length} search=${searchItems.length} merged=${items.length} 除外=${items.length - kept.length}` +
+      (resolver ? ` レビューURL=${kept.filter((i) => i.reviewUrl !== null).length}/${kept.length}` : ''),
   );
 
   return {

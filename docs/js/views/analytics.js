@@ -20,6 +20,8 @@ import {
   bySalePeriod,
   byWeekday,
   filterByPeriod,
+  genreRatio,
+  KITCHEN_GENRE_ID,
   rateComparison,
   statusOf,
   trafficSummary,
@@ -44,6 +46,24 @@ function summaryTable(rows, { label }) {
   return `<div class="table-wrap"><table>
     <thead><tr><th>${label}</th><th>投稿数</th><th>成約</th><th>成約率</th><th>1投稿あたり</th><th>報酬計</th></tr></thead>
     <tbody>${body}</tbody></table></div>`;
+}
+
+/**
+ * キッチン用品の比率（追加要件 5.1）。
+ * 直近30日の投稿に占める割合を出し、30%を超えたら警告する。
+ * キッチン用品は耐久財でリピートしないため、食品アカウントの主力にはしない。
+ */
+function kitchenRatioHtml(allPosts) {
+  const r = genreRatio(allPosts, KITCHEN_GENRE_ID, 30);
+  if (r.total === 0) {
+    return '<p class="small muted">直近30日の投稿がまだありません。キッチン用品の比率はここに出ます。</p>';
+  }
+
+  const line = `直近30日の投稿 ${fmtNum(r.total)}件のうち キッチン用品・食器 は <strong>${fmtNum(r.count)}件（${fmtPercent(r.ratio, 1)}）</strong>`;
+  return r.overLimit
+    ? `<div class="warnbar warnbar--danger">${line}。
+        上限の${fmtPercent(r.limit, 0)}を超えています。食品アカウントとしての一貫性が崩れるため、次は食品を優先してください。</div>`
+    : `<p class="small muted">${line}（上限 ${fmtPercent(r.limit, 0)}）</p>`;
 }
 
 export async function renderAnalytics(root) {
@@ -109,6 +129,7 @@ export async function renderAnalytics(root) {
     ${summaryTable(byHourBand(posts, byPostId), { label: '時刻帯' })}
 
     <h2>ジャンル別</h2>
+    ${kitchenRatioHtml(state.posts)}
     ${summaryTable(genreRows, { label: 'ジャンル' })}
 
     <h2>デバイス比率</h2>

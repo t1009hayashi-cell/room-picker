@@ -10,17 +10,34 @@
 
 import { jstParts } from './format.js';
 
-export const THRESHOLD_REASONS = new Set(['price_below_min', 'review_below_min', 'shipping_fee_separate']);
+export const THRESHOLD_REASONS = new Set([
+  'price_below_min',
+  'review_below_min',
+  'review_average_below_min',
+  'shipping_fee_separate',
+]);
 
 export const REASON_LABELS = {
   price_below_min: '価格が下限未満',
   review_below_min: 'レビュー件数が下限未満',
+  review_average_below_min: 'レビュー平均が下限未満',
   out_of_stock: '在庫なし',
   shipping_fee_separate: '送料別',
   subscription_word: '定期購入・頒布会',
   health_word: '健康訴求語を含む',
   price_expired: '価格の有効期限切れ',
 };
+
+/**
+ * 新着ブースト（追加要件 1.2）。レビュー平均の条件を免除する。
+ * **バッチ側（src/filter.ts の isNewcomer）と同じ基準にすること。**
+ */
+export const NEWCOMER = { minReviewCount: 50, minRankChange: 3 };
+
+export function isNewcomerItem(item) {
+  if ((item.reviewCount ?? 0) < NEWCOMER.minReviewCount) return false;
+  return (item.rankChange ?? 0) >= NEWCOMER.minRankChange;
+}
 
 /** ユーザー設定を当てはめて、その商品を候補として表示すべきかを返す */
 export function isExcludedForUser(item, settings) {
@@ -34,6 +51,13 @@ export function isExcludedForUser(item, settings) {
   const cutoffPrice = item.hasPriceRange ? item.itemPriceMax : item.itemPrice;
   if (cutoffPrice < settings.minPrice) reasons.push('price_below_min');
   if (item.reviewCount < settings.minReview) reasons.push('review_below_min');
+
+  // レビュー平均で実質の品質を見る（追加要件 1章）。新着ブーストは免除する
+  const minAverage = settings.minReviewAverage ?? 0;
+  if (minAverage > 0 && !isNewcomerItem(item) && (item.reviewAverage ?? 0) > 0 && item.reviewAverage < minAverage) {
+    reasons.push('review_average_below_min');
+  }
+
   // postageFlag は 0 が送料込み、1 が送料別
   if (settings.excludeShippingFeeSeparate && item.postageFlag === 1) reasons.push('shipping_fee_separate');
 
@@ -59,7 +83,18 @@ export function isLimitedTimePrice(item) {
   return Boolean(item.priceEndTime || item.priceStartTime);
 }
 
+/** 割引・クーポンの有無（追加要件 4章）。期限切れの割引は discountRate が null に戻っている */
+export function hasDiscount(item) {
+  return (item.discount?.discountRate ?? null) !== null;
+}
+
+export function hasCoupon(item) {
+  return Boolean(item.discount?.hasCoupon);
+}
+
 export const CHIP_FILTERS = [
+  { id: 'discounted', label: '割引あり', test: hasDiscount },
+  { id: 'coupon', label: 'クーポンあり', test: hasCoupon },
   { id: 'rateBoosted', label: '料率UPのみ', test: (item) => item.isRateBoosted },
   { id: 'highPoint', label: `ポイント${HIGH_POINT_RATE}倍以上`, test: (item) => (item.pointRate ?? 0) >= HIGH_POINT_RATE },
   { id: 'limitedPrice', label: '期間限定価格', test: isLimitedTimePrice },

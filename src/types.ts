@@ -67,6 +67,7 @@ export type ItemSource = 'ranking' | 'search';
 export type ExcludeReasonCode =
   | 'price_below_min'
   | 'review_below_min'
+  | 'review_average_below_min'
   | 'out_of_stock'
   | 'shipping_fee_separate'
   | 'subscription_word'
@@ -77,8 +78,38 @@ export type ExcludeReasonCode =
 export const THRESHOLD_REASONS: readonly ExcludeReasonCode[] = [
   'price_below_min',
   'review_below_min',
+  'review_average_below_min',
   'shipping_fee_separate',
 ];
+
+/**
+ * ポイント倍率の扱い（追加要件 3章）。
+ * 「候補に入れる」と「訴求してよい」を分ける。
+ *  - `strong` … 投稿文で倍率を出してよい
+ *  - `weak`   … 候補には入れるが投稿文で数字を出さない
+ *  - `null`   … 加点も訴求もしない（恒常設定を含む）
+ */
+export type PointBoost = 'weak' | 'strong' | null;
+
+/**
+ * クーポン・割引の抽出結果（追加要件 2章）。
+ * 楽天にクーポン専用APIは無く、店舗が itemName / catchcopy に書き込んだ文言から取る。
+ * **抽出した文言そのものは投稿文に転記しない。** 数値としてのみ持つ（景表法上の表示責任を負うため）。
+ */
+export interface DiscountInfo {
+  /** 割引率（%）。期限切れの場合は null に戻す */
+  discountRate: number | null;
+  hasCoupon: boolean;
+  /** 抽出元の文言そのまま。UIの確認用で、投稿文には使わない */
+  couponDeadlineRaw: string | null;
+  /** 年を補って ISO(+09:00) にしたもの */
+  couponDeadline: string | null;
+  priceBefore: number | null;
+  priceAfter: number | null;
+  extractedFrom: 'itemName' | 'catchcopy' | null;
+  /** 期限が過去だった場合に立てる。UIに「割引終了」と出す */
+  discountExpired: boolean;
+}
 
 export interface DraftComment {
   angle: string;
@@ -140,10 +171,29 @@ export interface NormalizedItem {
   rewardCapApplied: boolean;
 
   hotScore: number;
+  /** 「今だけ安い」の強さ（追加要件 4章）。一覧は hotScore + dealScore の降順で並べる */
+  dealScore: number;
+
+  /** ポイント倍率の扱い（追加要件 3章） */
+  pointBoost: PointBoost;
+
+  /** クーポン・割引の抽出結果（追加要件 2章） */
+  discount: DiscountInfo;
+
+  /** ショップの数値ID。APIには含まれず、商品ページのHTMLから取る（追加要件 6章） */
+  shopBid: string | null;
+  itemNumericId: string | null;
+  /** レビュー専用ページ。商品ページと違いUTF-8で読める。取得失敗時は null */
+  reviewUrl: string | null;
 
   excluded: boolean;
   excludeReason: string | null;
   excludeReasons: ExcludeReasonCode[];
+  /**
+   * レビュー平均の条件を免除した商品（追加要件 1.2）。
+   * 注目され始めてレビューが溜まっていないだけなので、定番より投稿の希少価値が高い。
+   */
+  newcomerExempt: boolean;
 
   draftComments: DraftComment[];
 }
@@ -203,8 +253,27 @@ export interface ScoringConfig {
   filters: {
     minPrice: number;
     minReviewCount: number;
+    /** レビュー平均の下限（追加要件 1章）。実質の品質判定はこちらで行う */
+    minReviewAverage: number;
     excludeOutOfStock: boolean;
     excludeShippingFeeSeparate: boolean;
+    /** 新着ブースト（追加要件 1.2）。この条件を満たすとレビュー平均の条件を免除する */
+    newcomer: {
+      minReviewCount: number;
+      minRankChange: number;
+    };
+  };
+  point: {
+    weakMin: number;
+    strongMin: number;
+  };
+  dealScore: {
+    discountRateThreshold: number;
+    discountBonus: number;
+    couponBonus: number;
+    pointStrongBonus: number;
+    pointWeakBonus: number;
+    duringSaleBonus: number;
   };
   reward: {
     rewardCapPerItem: number;

@@ -372,6 +372,28 @@ thead th {
   color: #2b1d00;
 }
 
+/* 割引率。追加要件4章で最も強い訴求なので、いちばん目立つ色にする */
+.badge--deal {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+  font-size: 12px;
+}
+
+.badge--coupon {
+  background: var(--hot);
+  border-color: var(--hot);
+  color: #241000;
+}
+
+/* 割引前の価格。取り消し線で「下がった」ことを示す */
+.item__priceBefore {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-decoration: line-through;
+}
+
 /* ---- chips ---- */
 .chips {
   display: flex;

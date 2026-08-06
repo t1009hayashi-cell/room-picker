@@ -12,9 +12,16 @@ export type NormalizedBase = Omit<
   | 'estimatedReward'
   | 'rewardCapApplied'
   | 'hotScore'
+  | 'dealScore'
+  | 'pointBoost'
+  | 'discount'
+  | 'shopBid'
+  | 'itemNumericId'
+  | 'reviewUrl'
   | 'excluded'
   | 'excludeReason'
   | 'excludeReasons'
+  | 'newcomerExempt'
   | 'draftComments'
 >;
 

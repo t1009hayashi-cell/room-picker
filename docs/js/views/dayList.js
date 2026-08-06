@@ -32,12 +32,17 @@ let showExcluded = false;
  * 既定は hotScore 降順（仕様書 8.2）。同点のときの順序がぶれると
  * 「さらに表示」で同じ商品が二度出たり抜けたりするため、必ず itemCode で決着をつける。
  */
+/** 「今だけ安い」を含めた総合点。追加要件4章で一覧の既定の並び順にする */
+const totalScore = (item) => (item.hotScore ?? 0) + (item.dealScore ?? 0);
+
 const SORTS = [
+  { id: 'deal', label: 'おすすめ順（hot＋お得）', compare: (a, b) => totalScore(b) - totalScore(a) },
   { id: 'hot', label: 'hot順', compare: (a, b) => b.hotScore - a.hotScore },
+  { id: 'discount', label: '割引率順', compare: (a, b) => (b.discount?.discountRate ?? 0) - (a.discount?.discountRate ?? 0) },
   { id: 'reward', label: '想定報酬順', compare: (a, b) => (b.estimatedReward ?? 0) - (a.estimatedReward ?? 0) },
   { id: 'point', label: 'ポイント倍率順', compare: (a, b) => (b.pointRate ?? 0) - (a.pointRate ?? 0) },
 ];
-let sortId = 'hot';
+let sortId = 'deal';
 
 /**
  * 投稿の状態での絞り込み。
@@ -232,6 +237,22 @@ function cardHtml(item, dateKey, state) {
     return `<span class="badge">${item.rank}位 →</span>`;
   })();
 
+  const d = item.discount ?? {};
+  const dealBadges = [
+    // 割引が最も強い訴求なので先頭に出す（追加要件4章）
+    d.discountRate !== null && d.discountRate !== undefined
+      ? `<span class="badge badge--deal">${d.discountRate}%OFF</span>`
+      : '',
+    d.discountExpired ? '<span class="badge badge--warn">割引終了</span>' : '',
+    d.hasCoupon ? '<span class="badge badge--coupon">クーポン</span>' : '',
+    d.couponDeadlineRaw && !d.discountExpired
+      ? `<span class="badge">${escapeHtml(d.couponDeadlineRaw)}</span>`
+      : '',
+    item.newcomerExempt ? '<span class="badge badge--new">新着</span>' : '',
+  ]
+    .filter(Boolean)
+    .join('');
+
   const badges = [
     rankBadge,
     item.isRateBoosted
@@ -239,11 +260,13 @@ function cardHtml(item, dateKey, state) {
       : `<span class="badge">料率 ${fmtPercent(item.affiliateRate, 1)}${item.affiliateRateSource === 'genre-fallback' ? '(推定)' : ''}</span>`,
     item.postageFlag === 0 ? '<span class="badge">送料込み</span>' : '<span class="badge badge--warn">送料別</span>',
     outOfStock ? '<span class="badge badge--down">在庫なし</span>' : '',
-    item.pointRate >= 5 ? `<span class="badge badge--warn">ポイント${item.pointRate}倍</span>` : '',
+    // 追加要件3章: strong（5倍以上・期限つき）のときだけ倍率を出す。
+    // weak（3〜4倍）と恒常設定は訴求材料にしない
+    item.pointBoost === 'strong' ? `<span class="badge badge--warn">ポイント${item.pointRate}倍</span>` : '',
     isLimitedTimePrice(item) ? '<span class="badge badge--rate">期間限定価格</span>' : '',
     reserved ? '<span class="badge badge--reserved">予約済み</span>' : '',
     posted ? '<span class="badge badge--posted">投稿済み</span>' : '',
-    `<span class="badge">hot ${item.hotScore}</span>`,
+    `<span class="badge">hot ${item.hotScore}${item.dealScore ? `+お得${item.dealScore}` : ''}</span>`,
   ]
     .filter(Boolean)
     .join('');
@@ -280,9 +303,16 @@ function cardHtml(item, dateKey, state) {
       ${item.imageUrl ? `<img class="item__thumb" src="${escapeHtml(item.imageUrl)}" alt="" loading="lazy" />` : '<div class="item__thumb"></div>'}
       <div class="item__main">
         <p class="item__name" data-toggle-name>${escapeHtml(item.itemName)}</p>
+        ${dealBadges ? `<div class="item__badges">${dealBadges}</div>` : ''}
         <div class="item__badges">${badges}</div>
         <div class="spread">
-          <span class="item__price">${priceNote}</span>
+          <span class="item__price">
+            ${
+              d.priceBefore && d.priceAfter
+                ? `<span class="item__priceBefore">${fmtYen(d.priceBefore)}</span> ${fmtYen(d.priceAfter)}`
+                : priceNote
+            }
+          </span>
           <span class="item__meta">★${item.reviewAverage} / ${fmtNum(item.reviewCount)}件</span>
         </div>
         <p class="item__meta">
@@ -312,6 +342,11 @@ function cardHtml(item, dateKey, state) {
       <button class="btn" data-copy-name="${escapeHtml(item.itemCode)}">商品名をコピー</button>
       <button class="btn" data-copy-url="${escapeHtml(item.itemCode)}" ${item.itemUrl ? '' : 'disabled'}>URLをコピー</button>
       <a class="btn" href="${escapeHtml(item.itemUrl)}" target="_blank" rel="noopener noreferrer">楽天で開く</a>
+      ${
+        item.reviewUrl
+          ? `<a class="btn" href="${escapeHtml(item.reviewUrl)}" target="_blank" rel="noopener noreferrer">レビューを読む</a>`
+          : ''
+      }
     </div>
     <div class="spread" style="margin-top:8px">
       <span class="small muted">投稿予定日</span>

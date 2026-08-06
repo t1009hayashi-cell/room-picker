@@ -6,26 +6,47 @@ export interface FilterInput {
   itemPriceMax: number;
   hasPriceRange: boolean;
   reviewCount: number;
+  reviewAverage: number;
   availability: number;
   postageFlag: number;
   priceEndTime: string | null;
+  /** 新着ブーストの判定に使う。前日データが無い初回は null */
+  rankChange: number | null;
 }
 
 export interface FilterResult {
   excluded: boolean;
   excludeReason: string | null;
   excludeReasons: ExcludeReasonCode[];
+  /** レビュー平均の条件を免除したか（追加要件 1.2） */
+  newcomerExempt: boolean;
 }
 
 export const EXCLUDE_REASON_LABELS: Record<ExcludeReasonCode, string> = {
   price_below_min: '価格が下限未満',
   review_below_min: 'レビュー件数が下限未満',
+  review_average_below_min: 'レビュー平均が下限未満',
   out_of_stock: '在庫なし',
   shipping_fee_separate: '送料別',
   subscription_word: '定期購入・頒布会',
   health_word: '健康訴求語を含む',
   price_expired: '価格の有効期限切れ',
 };
+
+/**
+ * 新着ブースト（追加要件 1.2）。
+ * レビュー件数が一定以上あり、かつ順位が上がっている商品はレビュー平均の条件を免除する。
+ * 注目され始めた商品はレビューが溜まっていないだけで、定番より投稿の希少価値が高いため。
+ */
+export function isNewcomer(
+  item: Pick<FilterInput, 'reviewCount' | 'rankChange'>,
+  scoring: ScoringConfig,
+): boolean {
+  const n = scoring.filters.newcomer;
+  if (item.reviewCount < n.minReviewCount) return false;
+  // 前日データが無い初回実行では順位変動が出ないため免除しない（仕様書 6.4 と同じ考え方）
+  return (item.rankChange ?? 0) >= n.minRankChange;
+}
 
 export function containsAny(text: string, words: string[]): string | null {
   for (const word of words) {
@@ -61,6 +82,14 @@ export function evaluateExclusion(
 
   if (item.reviewCount < f.minReviewCount) reasons.push('review_below_min');
 
+  // レビュー平均で実質の品質を見る（追加要件 1章）。
+  // 件数は十分でも評価が低い商品は、実際に不満が出ているサインとして弾く。
+  // ただし新着ブーストに該当する商品はこの条件を免除する（追加要件 1.2）。
+  const newcomerExempt = isNewcomer(item, scoring);
+  if (!newcomerExempt && item.reviewAverage > 0 && item.reviewAverage < f.minReviewAverage) {
+    reasons.push('review_average_below_min');
+  }
+
   // availability: 0 = 売り切れ
   if (f.excludeOutOfStock && item.availability === 0) reasons.push('out_of_stock');
 
@@ -80,5 +109,6 @@ export function evaluateExclusion(
     excluded: reasons.length > 0,
     excludeReason: first ? EXCLUDE_REASON_LABELS[first] : null,
     excludeReasons: reasons,
+    newcomerExempt,
   };
 }

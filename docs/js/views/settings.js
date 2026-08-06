@@ -6,6 +6,7 @@
 import { app, refreshData, render, setAppBar, toast } from '../main.js';
 import * as store from '../lib/store.js';
 import { FIELD_LABELS, REQUIRED_FIELDS, buildResults, importCsv } from '../lib/csv.js';
+import { NEWCOMER } from '../lib/filters.js';
 import { loadGenreMaster } from '../lib/dataLoader.js';
 import { DEFAULT_COMMISSION_RATE, searchGenres } from '../lib/genres.js';
 import { copyToClipboard } from '../lib/prompt.js';
@@ -159,6 +160,15 @@ export async function renderSettings(root) {
     <div class="card">
       <label class="field"><span>価格の下限（円）</span><input type="number" min="0" step="100" value="${s.minPrice}" data-setting="minPrice" /></label>
       <label class="field"><span>レビュー件数の下限</span><input type="number" min="0" step="50" value="${s.minReview}" data-setting="minReview" /></label>
+      <label class="field">
+        <span>レビュー平均の下限（0で無効）</span>
+        <input type="number" min="0" max="5" step="0.1" value="${s.minReviewAverage ?? 0}" data-setting="minReviewAverage" />
+      </label>
+      <p class="small muted" style="margin:0 0 10px">
+        件数が多くても評価が低い商品は、実際に不満が出ているサインとして外します。
+        候補が減りすぎたら 4.2 や 4.0 まで下げてください。
+        レビュー${NEWCOMER.minReviewCount}件以上で順位が${NEWCOMER.minRankChange}つ以上上がった商品は、この条件を免除します。
+      </p>
       <label class="small"><input type="checkbox" data-setting-bool="excludeShippingFeeSeparate" ${s.excludeShippingFeeSeparate ? 'checked' : ''} /> 送料別（postageFlag=1）を除外する</label>
       <p class="small muted" style="margin:8px 0 0">在庫なし・価格の期限切れ・定期購入／健康訴求語は必須の除外条件のため、ここでは緩められません。</p>
       <label class="field" style="margin-top:10px"><span>カレンダーで読み込む日数（多いほど通信量が増えます）</span><input type="number" min="1" max="180" value="${s.calendarWindowDays}" data-setting="calendarWindowDays" /></label>

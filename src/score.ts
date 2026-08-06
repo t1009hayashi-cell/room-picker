@@ -1,4 +1,4 @@
-import type { ItemSource, ScoringConfig } from './types.js';
+import type { DiscountInfo, ItemSource, PointBoost, ScoringConfig } from './types.js';
 
 export interface ScoreInput {
   source: ItemSource;
@@ -41,6 +41,35 @@ export function calcHotScore(item: ScoreInput, scoring: ScoringConfig): number {
   if (item.isRateBoosted) score += c.rateBoostedBonus;
 
   score += Math.min(item.pointRate, c.pointRateCap);
+
+  return Math.round(score);
+}
+
+export interface DealScoreInput {
+  discount: DiscountInfo;
+  pointBoost: PointBoost;
+  /** sales.json と照合した結果、投稿予定日がセール期間中か */
+  duringSale: boolean;
+}
+
+/**
+ * 「今だけ安い」の強さ（追加要件 4章）。hotScore とは別に持つ。
+ *
+ * **60%OFF はポイント20倍より圧倒的に強い訴求である**ため、割引率を最優先にする。
+ * 一覧は hotScore + dealScore の降順で並べる。
+ */
+export function calcDealScore(item: DealScoreInput, scoring: ScoringConfig): number {
+  const d = scoring.dealScore;
+  let score = 0;
+
+  // 期限切れの割引は extractDiscount が discountRate を null に戻しているので加点されない
+  if ((item.discount.discountRate ?? 0) >= d.discountRateThreshold) score += d.discountBonus;
+  if (item.discount.hasCoupon) score += d.couponBonus;
+
+  if (item.pointBoost === 'strong') score += d.pointStrongBonus;
+  else if (item.pointBoost === 'weak') score += d.pointWeakBonus;
+
+  if (item.duringSale) score += d.duringSaleBonus;
 
   return Math.round(score);
 }

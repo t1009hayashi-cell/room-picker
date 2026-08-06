@@ -1,16 +1,37 @@
 {
   "_note": "仕様書 6.2 / 6.3 の係数はここ1箇所に集約する。運用しながら調整する前提。",
   "filters": {
+    "_note": "追加要件v1.1: 40〜50代・子どもがいる家庭向けに変更。レビュー件数より平均で品質を見る",
     "minPrice": 3000,
-    "minReviewCount": 500,
+    "minReviewCount": 200,
+    "minReviewAverage": 4.3,
     "excludeOutOfStock": true,
-    "excludeShippingFeeSeparate": true
+    "excludeShippingFeeSeparate": true,
+    "newcomer": {
+      "_note": "注目され始めた商品はレビューが溜まっていないだけ。レビュー平均の条件を免除する",
+      "minReviewCount": 50,
+      "minRankChange": 3
+    }
   },
   "reward": {
     "rewardCapPerItem": 1000,
     "roomRankBonusRate": 0.02,
     "roomRankBonusCap": 1000,
     "rateBoostThreshold": 0.05
+  },
+  "point": {
+    "_note": "追加要件v1.1 3章。候補に入れる閾値と訴求してよい閾値を分ける",
+    "weakMin": 3,
+    "strongMin": 5
+  },
+  "dealScore": {
+    "_note": "追加要件v1.1 4章。60%OFFはポイント20倍より強い訴求のため割引率を最優先にする",
+    "discountRateThreshold": 20,
+    "discountBonus": 50,
+    "couponBonus": 30,
+    "pointStrongBonus": 20,
+    "pointWeakBonus": 5,
+    "duringSaleBonus": 15
   },
   "hotScore": {
     "rankGainPerRank": 5,

@@ -14,7 +14,8 @@
 // v6: ジャンルの未反映を明示・反映手順の導線（2026-08-04）
 // v7: ジャンル別表示・商品名コピー・投稿文をプロンプトの型に（2026-08-04）
 // v8: ボタン配置の整列・警告のはみ出し修正・商品名を検索用に短縮（2026-08-04）
-const SHELL_VERSION = 'v8';
+// v9: 追加要件v1.1（reviewAverage判定・クーポン抽出・dealScore・レビューURL）（2026-08-04）
+const SHELL_VERSION = 'v9';
 const DATA_VERSION = 'v1';
 const SHELL_CACHE = `room-shell-${SHELL_VERSION}`;
 const DATA_CACHE = `room-data-${DATA_VERSION}`;

@@ -25,7 +25,10 @@ export function dayItemKey(dateKey, itemCode) {
 
 export const DEFAULT_SETTINGS = {
   minPrice: 3000,
-  minReview: 500,
+  // 追加要件1章: 500だと定番商品しか残らず顔ぶれが固定化するため200に下げ、
+  // 実質の品質判定はレビュー平均で行う
+  minReview: 200,
+  minReviewAverage: 4.3,
   excludeShippingFeeSeparate: true,
   calendarMode: 'scheduled', // 'scheduled' | 'discovered'
   roomRankBonusRate: 0.02,
@@ -57,7 +60,7 @@ function emptyState() {
     extraGenres: [],
     csvImports: [],
     settings: { ...DEFAULT_SETTINGS },
-    meta: { lastExportAt: null, a2hsDismissed: false, firstSeenAt: null },
+    meta: { lastExportAt: null, a2hsDismissed: false, firstSeenAt: null, settingsVersion: SETTINGS_VERSION },
   };
 }
 
@@ -104,6 +107,26 @@ function migrateReserved(rawReserved) {
   return out;
 }
 
+/** 設定の世代。追加要件v1.1で既定値が変わったため、保存済みの設定を1度だけ移行する */
+const SETTINGS_VERSION = 2;
+
+/**
+ * 既定値の変更を保存済みの設定に反映する。
+ *
+ * `load()` は状態を丸ごと保存するため、一度でも起動していれば設定は
+ * すべて保存済みになっている。そのままでは DEFAULT_SETTINGS を変えても効かない。
+ * **旧既定値のままの項目だけ**を新既定値に差し替える（自分で変えた値は尊重する）。
+ */
+function migrateSettings(settings, meta) {
+  const next = { ...settings };
+  if ((meta?.settingsVersion ?? 1) >= SETTINGS_VERSION) return next;
+
+  // 旧既定値 500 のままなら新既定値 200 にする
+  if (next.minReview === 500) next.minReview = 200;
+  if (typeof next.minReviewAverage !== 'number') next.minReviewAverage = 4.3;
+  return next;
+}
+
 function migrate(raw) {
   const base = emptyState();
   if (!raw || typeof raw !== 'object') return base;
@@ -111,8 +134,8 @@ function migrate(raw) {
   return {
     ...base,
     ...raw,
-    settings: { ...base.settings, ...(raw.settings ?? {}) },
-    meta: { ...base.meta, ...(raw.meta ?? {}) },
+    settings: migrateSettings({ ...base.settings, ...(raw.settings ?? {}) }, raw.meta),
+    meta: { ...base.meta, ...(raw.meta ?? {}), settingsVersion: SETTINGS_VERSION },
     schedule: raw.schedule ?? {},
     comments: raw.comments ?? {},
     postedAngle: raw.postedAngle ?? {},

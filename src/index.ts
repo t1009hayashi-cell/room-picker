@@ -1,6 +1,7 @@
 import { DATA_DIR, loadConfig } from './config.js';
 import { rebuildIndex, readSales, readSnapshot, writeSales, writeSnapshot } from './io.js';
 import { buildDailySnapshot, makeLiveFetcher, type GenreFetcher } from './pipeline.js';
+import { ReviewUrlResolver } from './rakuten/itemPage.js';
 import { RakutenClient } from './rakuten/client.js';
 import { buildMockRanking, buildMockSearch, mockFetchResult } from './rakuten/mock.js';
 import { collectSaleInputs, detectSales, mergeSales } from './sales.js';
@@ -91,6 +92,21 @@ async function main(): Promise<void> {
   const prev = await readSnapshot(args.dataDir, addDays(date, -1));
   if (!prev) log('前日のスナップショットがありません。順位変動なしとして処理します（仕様書 6.4）');
 
+  // dealScore の「セール期間中」判定に使う（追加要件 4章）。
+  // その日のセールはこの実行の結果から検出するため、前回までに検出済みのものを使う
+  const previousSales = await readSales(args.dataDir);
+
+  // レビューURLの取得（追加要件 6章）。除外を通過した商品ごとに商品ページを1回取る。
+  // モック実行では外部にアクセスしない
+  const reviewWarnings: string[] = [];
+  const reviewUrlResolver = args.mock
+    ? null
+    : new ReviewUrlResolver({
+        intervalMs: Number(process.env.RAKUTEN_REQUEST_INTERVAL_MS ?? 1100),
+        onLog: log,
+        onWarn: (m) => reviewWarnings.push(m),
+      });
+
   const snapshot = await buildDailySnapshot({
     config,
     fetcher,
@@ -98,6 +114,8 @@ async function main(): Promise<void> {
     now,
     applicationId,
     generatedBy: args.mock ? 'mock' : 'live',
+    knownSales: previousSales?.sales ?? [],
+    reviewUrlResolver,
     onLog: log,
   });
 
@@ -105,7 +123,6 @@ async function main(): Promise<void> {
 
   const allItems: NormalizedItem[] = snapshot.genres.flatMap((g) => g.items);
   const detected = detectSales(collectSaleInputs(allItems), config.scoring, now);
-  const previousSales = await readSales(args.dataDir);
   await writeSales(args.dataDir, {
     updatedAt: nowJstIso(now),
     sales: mergeSales(previousSales?.sales ?? [], detected),
@@ -113,9 +130,19 @@ async function main(): Promise<void> {
 
   const index = await rebuildIndex(args.dataDir);
 
-  const kept = allItems.filter((i) => !i.excluded).length;
+  const keptItems = allItems.filter((i) => !i.excluded);
   const warnings = snapshot.genres.flatMap((g) => g.warnings);
-  log(`完了: ${allItems.length}件取得 / ${kept}件が条件通過 / セール${detected.length}件を自動検出`);
+  log(`完了: ${allItems.length}件取得 / ${keptItems.length}件が条件通過 / セール${detected.length}件を自動検出`);
+  log(
+    `割引あり ${allItems.filter((i) => i.discount.discountRate !== null).length}件 / ` +
+      `クーポンあり ${allItems.filter((i) => i.discount.hasCoupon).length}件 / ` +
+      `新着ブースト ${allItems.filter((i) => i.newcomerExempt).length}件`,
+  );
+  if (reviewUrlResolver) {
+    const s = reviewUrlResolver.stats;
+    log(`レビューURL: ${keptItems.filter((i) => i.reviewUrl !== null).length}件取得（${s.fetched}件試行 / ${s.failed}件失敗）`);
+    if (reviewWarnings.length > 0) log(`  レビューURLの警告 ${reviewWarnings.length}件（先頭3件）:\n  - ${reviewWarnings.slice(0, 3).join('\n  - ')}`);
+  }
   log(`data/index.json: ${index.dates.length}日分`);
   if (warnings.length > 0) log(`警告 ${warnings.length}件:\n  - ${warnings.join('\n  - ')}`);
 }

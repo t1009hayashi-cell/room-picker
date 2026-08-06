@@ -233,9 +233,11 @@ describe('filter（仕様書 6.1）', () => {
     itemPriceMax: 5398,
     hasPriceRange: false,
     reviewCount: 43088,
+    reviewAverage: 4.6,
     availability: 1,
     postageFlag: 0,
     priceEndTime: null,
+    rankChange: null,
   };
 
   it('条件を満たす商品は除外されない', async () => {

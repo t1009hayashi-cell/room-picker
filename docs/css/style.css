@@ -286,6 +286,46 @@ label.field > span {
   margin-bottom: 4px;
 }
 
+/**
+ * 日別リストの絞り込み（ジャンル／表示／並び順）。
+ *
+ * `.row` は flex-wrap: wrap なので、選択肢の文字が長いとラベルだけが上の行に回り、
+ * 「表示」は横・「並び順」は上、という不揃いな並びになる（実機で発生）。
+ * ラベルを常に上に置いたグリッドにして位置を固定する。
+ */
+.filters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 8px;
+  margin-bottom: 10px;
+}
+
+.filters > label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  /* 選択肢が長くてもグリッドの列幅を押し広げないようにする */
+  min-width: 0;
+}
+
+.filters > label > span {
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.2;
+}
+
+.filters > label > select {
+  width: 100%;
+  /* 文字が長いとiOSで選択欄が横に伸びるため、はみ出さないよう詰める */
+  font-size: 14px;
+  padding: 7px 8px;
+}
+
+/* ジャンルは選択肢が最も長いので1行を使う */
+.filters > label.filters__wide {
+  grid-column: 1 / -1;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;

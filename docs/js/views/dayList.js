@@ -36,7 +36,8 @@ let showExcluded = false;
 const totalScore = (item) => (item.hotScore ?? 0) + (item.dealScore ?? 0);
 
 const SORTS = [
-  { id: 'deal', label: 'おすすめ順（hot＋お得）', compare: (a, b) => totalScore(b) - totalScore(a) },
+  // カードの「hot 40+お得80」バッジがこの点数の内訳。選択欄の幅に収めるため名前は短くする
+  { id: 'deal', label: 'おすすめ順', compare: (a, b) => totalScore(b) - totalScore(a) },
   { id: 'hot', label: 'hot順', compare: (a, b) => b.hotScore - a.hotScore },
   { id: 'discount', label: '割引率順', compare: (a, b) => (b.discount?.discountRate ?? 0) - (a.discount?.discountRate ?? 0) },
   { id: 'reward', label: '想定報酬順', compare: (a, b) => (b.estimatedReward ?? 0) - (a.estimatedReward ?? 0) },
@@ -167,17 +168,10 @@ export async function renderDayList(root, dateKey) {
 
   root.innerHTML = `
     <div class="chips">${chips}${excludedChip}</div>
-    <label class="row small muted" style="margin-bottom:6px;gap:4px">
-      <span>ジャンル</span>
-      <select id="day-genre" style="width:auto;flex:1">${genreOptions}</select>
-    </label>
-    <div class="row small muted" style="margin-bottom:8px">
-      <label class="row" style="flex:1;gap:4px"><span>表示</span>
-        <select id="day-status" style="width:auto;flex:1">${statusOptions}</select>
-      </label>
-      <label class="row" style="flex:1;gap:4px"><span>並び順</span>
-        <select id="day-sort" style="width:auto;flex:1">${sortOptions}</select>
-      </label>
+    <div class="filters">
+      <label class="filters__wide"><span>ジャンル</span><select id="day-genre">${genreOptions}</select></label>
+      <label><span>表示</span><select id="day-status">${statusOptions}</select></label>
+      <label><span>並び順</span><select id="day-sort">${sortOptions}</select></label>
     </div>
     <p class="small muted">${mode === 'discovered' ? '発見日' : '投稿予定日'}モード / ${items.length}件 / 想定報酬合計 ${fmtYen(totalReward)}</p>
     ${shopConcentrationNotice(items)}

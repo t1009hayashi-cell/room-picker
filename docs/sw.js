@@ -16,7 +16,8 @@
 // v8: ボタン配置の整列・警告のはみ出し修正・商品名を検索用に短縮（2026-08-04）
 // v9: 追加要件v1.1（reviewAverage判定・クーポン抽出・dealScore・レビューURL）（2026-08-04）
 // v10: 絞り込み欄のラベル位置を揃えた（2026-08-07）
-const SHELL_VERSION = 'v10';
+// v11: 別の日に投稿済みの商品が分かるようにした（2026-08-07）
+const SHELL_VERSION = 'v11';
 const DATA_VERSION = 'v1';
 const SHELL_CACHE = `room-shell-${SHELL_VERSION}`;
 const DATA_CACHE = `room-data-${DATA_VERSION}`;

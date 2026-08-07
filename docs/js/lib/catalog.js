@@ -59,7 +59,12 @@ function decorate(item, sales, settings, schedule) {
  * 投稿済み・予約は「日付|itemCode」で記録されているため dateKey が要る。
  * 商品コードだけで見ると、同じ商品が載っている他の日にも印が付いてしまう。
  */
-export function summarizeDay(items, dateKey, { posted: postedMap = {}, reserved: reservedMap = {} } = {}) {
+export function summarizeDay(
+  items,
+  dateKey,
+  { posted: postedMap = {}, reserved: reservedMap = {} } = {},
+  postedIndex = new Map(),
+) {
   let todo = 0;
   let posted = 0;
   let reserved = 0;
@@ -69,7 +74,9 @@ export function summarizeDay(items, dateKey, { posted: postedMap = {}, reserved:
   for (const item of items) {
     const key = dayItemKey(dateKey, item.itemCode);
     if (postedMap[key]) posted += 1;
-    else todo += 1;
+    // 別の日に投稿済みの商品は「やること」に数えない。
+    // 数えると、同じ商品が複数の日に出るぶんだけ件数が水増しされる
+    else if (!postedIndex.has(item.itemCode)) todo += 1;
     // 予約は「投稿文を書いて当日に備えた」印。投稿すると解除されるので posted とは重ならない
     if (reservedMap[key]) reserved += 1;
     if (item.isRateBoosted) rateBoosted += 1;

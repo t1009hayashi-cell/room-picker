@@ -39,6 +39,8 @@ export async function renderCalendar(root) {
   const catalog = app.catalog;
   const source = mode === 'discovered' ? catalog?.byDiscovered : catalog?.byScheduled;
   const today = todayKey();
+  // 別の日に投稿済みの商品を「やること」に数えないための索引
+  const postedIndex = store.buildPostedItemIndex(state.posts);
 
   setAppBar('カレンダー');
 
@@ -50,7 +52,7 @@ export async function renderCalendar(root) {
       // 発見日モードの byDiscovered は除外品も含む（仕様書6.1で残す設計のため）。
       // 日別リストの既定表示と件数・想定報酬合計が食い違わないよう、ここでも除外品を落とす。
       const items = (source?.get(cell.dateKey) ?? []).filter((item) => !item.userExcluded);
-      const sum = summarizeDay(items, cell.dateKey, state);
+      const sum = summarizeDay(items, cell.dateKey, state, postedIndex);
       const daySales = salesOnDate(app.sales, cell.dateKey);
       const classes = [
         'cal__cell',

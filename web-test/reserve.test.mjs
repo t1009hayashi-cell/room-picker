@@ -242,6 +242,60 @@ describe('古い保存データの移行', () => {
   });
 });
 
+describe('別の日に投稿済みかを引ける（二重投稿の防止）', () => {
+  it('商品コードから投稿した日を引ける', () => {
+    reset();
+    store.addPost({ postId: 'p1', dateKey: DAY, itemCode: 'shop:1', postedAt: '2026-08-10T20:00:00+09:00' });
+    const index = store.buildPostedItemIndex(store.getState().posts);
+    assert.deepEqual(index.get('shop:1'), [DAY]);
+  });
+
+  it('この日以外に投稿した日だけを返す', () => {
+    reset();
+    store.addPost({ postId: 'p1', dateKey: DAY, itemCode: 'shop:1', postedAt: '2026-08-10T20:00:00+09:00' });
+    const index = store.buildPostedItemIndex(store.getState().posts);
+
+    // 投稿した当日は「別の日」に含めない（その日のバッジで分かるため）
+    assert.deepEqual(store.postedOnOtherDays(index, 'shop:1', DAY), []);
+    // 別の日で見ると投稿済みだと分かる
+    assert.deepEqual(store.postedOnOtherDays(index, 'shop:1', OTHER), [DAY]);
+  });
+
+  it('複数の日に投稿していれば日付順に並ぶ', () => {
+    reset();
+    store.addPost({ postId: 'p2', dateKey: OTHER, itemCode: 'shop:1', postedAt: '2026-08-11T20:00:00+09:00' });
+    store.addPost({ postId: 'p1', dateKey: DAY, itemCode: 'shop:1', postedAt: '2026-08-10T20:00:00+09:00' });
+    const index = store.buildPostedItemIndex(store.getState().posts);
+    assert.deepEqual(index.get('shop:1'), [DAY, OTHER]);
+  });
+
+  it('dateKey を持たない古いログは投稿時刻の日付で代用する', () => {
+    store.importJson(
+      JSON.stringify({
+        version: 1,
+        posts: [{ postId: 'p1', itemCode: 'shop:1', postedAt: '2026-08-10T20:00:00+09:00' }],
+      }),
+    );
+    const index = store.buildPostedItemIndex(store.getState().posts);
+    assert.deepEqual(index.get('shop:1'), ['2026-08-10']);
+  });
+
+  it('投稿していない商品は索引に載らない', () => {
+    reset();
+    const index = store.buildPostedItemIndex(store.getState().posts);
+    assert.equal(index.has('shop:9'), false);
+    assert.deepEqual(store.postedOnOtherDays(index, 'shop:9', DAY), []);
+  });
+
+  it('投稿を取り消すと索引からも消える', () => {
+    reset();
+    store.addPost({ postId: 'p1', dateKey: DAY, itemCode: 'shop:1', postedAt: '2026-08-10T20:00:00+09:00' });
+    store.undoPost(DAY, 'shop:1');
+    const index = store.buildPostedItemIndex(store.getState().posts);
+    assert.equal(index.has('shop:1'), false);
+  });
+});
+
 describe('カレンダーの日次集計', () => {
   const items = [
     { itemCode: 'a', isRateBoosted: false, estimatedReward: 100 },
@@ -281,5 +335,17 @@ describe('カレンダーの日次集計', () => {
     assert.equal(sum.posted, 0);
     assert.equal(sum.reserved, 0);
     assert.equal(sum.todo, 3);
+  });
+
+  it('別の日に投稿済みの商品は「やること」に数えない', () => {
+    // 同じ商品が複数の日に出るため、数えると件数が水増しされる
+    const index = new Map([['a', [OTHER]]]);
+    const sum = summarizeDay(items, DAY, {}, index);
+    assert.equal(sum.todo, 2);
+    assert.equal(sum.posted, 0);
+  });
+
+  it('索引を渡さなければ従来どおり数える', () => {
+    assert.equal(summarizeDay(items, DAY, {}).todo, 3);
   });
 });

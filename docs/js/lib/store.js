@@ -283,6 +283,32 @@ export function isReserved(dateKey, itemCode) {
 }
 
 /**
+ * 商品コードごとの投稿履歴（itemCode -> 押した日の配列）。
+ *
+ * 投稿済みの印は「押した日」に紐づけているため（同じ商品が複数の日に出るため）、
+ * **別の日で同じ商品を見たときに投稿済みだと分からず、二重に投稿してしまう。**
+ * それを防ぐために、日をまたいで「この商品はもう投稿した」を引けるようにする。
+ */
+export function buildPostedItemIndex(posts = getState().posts) {
+  const index = new Map();
+  for (const post of posts) {
+    if (!post?.itemCode) continue;
+    // dateKey を持たない古いログは投稿時刻の日付で代用する
+    const day = post.dateKey ?? String(post.postedAt ?? '').slice(0, 10);
+    const list = index.get(post.itemCode) ?? [];
+    if (day && !list.includes(day)) list.push(day);
+    index.set(post.itemCode, list);
+  }
+  for (const list of index.values()) list.sort();
+  return index;
+}
+
+/** その商品を「この日以外」で投稿済みか。重複投稿の警告に使う */
+export function postedOnOtherDays(index, itemCode, dateKey) {
+  return (index.get(itemCode) ?? []).filter((day) => day !== dateKey);
+}
+
+/**
  * 投稿ログ（仕様書 5.4）。「投稿済みにする」を押した時点で1レコード確定保存する。
  * record.dateKey は押したときに見ていた日。投稿済みの印をその日にだけ付けるために使う。
  */

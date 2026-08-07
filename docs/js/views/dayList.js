@@ -49,21 +49,30 @@ let sortId = 'deal';
  * 投稿の状態での絞り込み。
  * 「予約のみ」が主役で、投稿予定日に開いて予約したものだけを見るための入口。
  */
+/**
+ * 投稿の状態での絞り込み。
+ *
+ * **未投稿／投稿済みは「商品ごと」で見る。**
+ * 印そのものは押した日に紐づくが、絞り込みまで日ごとにすると
+ * 別の日に出た同じ商品が「未投稿」に並び、二重投稿の元になる。
+ */
 const STATUS_FILTERS = [
   { id: 'all', label: 'すべて', test: () => true },
-  { id: 'reserved', label: '予約のみ', test: (state, key) => Boolean(state.reserved[key]) },
-  { id: 'unposted', label: '未投稿のみ', test: (state, key) => !state.posted[key] },
-  { id: 'posted', label: '投稿済みのみ', test: (state, key) => Boolean(state.posted[key]) },
+  { id: 'reserved', label: '予約のみ', test: (ctx) => Boolean(ctx.state.reserved[ctx.key]) },
+  { id: 'unposted', label: '未投稿のみ', test: (ctx) => !ctx.postedIndex.has(ctx.itemCode) },
+  { id: 'posted', label: '投稿済みのみ', test: (ctx) => ctx.postedIndex.has(ctx.itemCode) },
 ];
 let statusId = 'all';
 
 /** ジャンルでの絞り込み。'all' はすべて */
 let genreFilter = 'all';
 
-function applyStatus(items, state, dateKey) {
+function applyStatus(items, state, dateKey, postedIndex) {
   const filter = STATUS_FILTERS.find((f) => f.id === statusId) ?? STATUS_FILTERS[0];
   if (filter.id === 'all') return items;
-  return items.filter((item) => filter.test(state, store.dayItemKey(dateKey, item.itemCode)));
+  return items.filter((item) =>
+    filter.test({ state, postedIndex, itemCode: item.itemCode, key: store.dayItemKey(dateKey, item.itemCode) }),
+  );
 }
 
 function applyGenre(items) {
@@ -136,8 +145,14 @@ export async function renderDayList(root, dateKey) {
     visibleCount = PAGE_SIZE;
   }
 
-  const items = sortItems(applyGenre(applyStatus(applyChips(dayItems, activeChips), state, dateKey)));
+  // 商品ごとの投稿履歴。別の日に投稿済みかを判定して二重投稿を防ぐ
+  const postedIndex = store.buildPostedItemIndex(state.posts);
+
+  const items = sortItems(applyGenre(applyStatus(applyChips(dayItems, activeChips), state, dateKey, postedIndex)));
   const reservedCount = dayItems.filter((item) => state.reserved[store.dayItemKey(dateKey, item.itemCode)]).length;
+  const otherDayPostedCount = dayItems.filter(
+    (item) => store.postedOnOtherDays(postedIndex, item.itemCode, dateKey).length > 0,
+  ).length;
   const totalReward = items.reduce((sum, item) => sum + (item.estimatedReward ?? 0), 0);
   const shown = items.slice(0, visibleCount);
   const rest = items.length - shown.length;
@@ -174,9 +189,14 @@ export async function renderDayList(root, dateKey) {
       <label><span>並び順</span><select id="day-sort">${sortOptions}</select></label>
     </div>
     <p class="small muted">${mode === 'discovered' ? '発見日' : '投稿予定日'}モード / ${items.length}件 / 想定報酬合計 ${fmtYen(totalReward)}</p>
+    ${
+      otherDayPostedCount > 0 && statusId !== 'posted'
+        ? `<p class="small muted">この日の候補のうち <strong>${otherDayPostedCount}件</strong> は別の日にすでに投稿しています。「表示: 未投稿のみ」にすると隠せます。</p>`
+        : ''
+    }
     ${shopConcentrationNotice(items)}
     <div id="day-items">
-      ${items.length === 0 ? `<p class="empty">${emptyMessage()}</p>` : shown.map((item) => cardHtml(item, dateKey, state)).join('')}
+      ${items.length === 0 ? `<p class="empty">${emptyMessage()}</p>` : shown.map((item) => cardHtml(item, dateKey, state, postedIndex)).join('')}
     </div>
     ${rest > 0 ? `<button class="btn btn--block" data-more>さらに表示（残り${rest}件）</button>` : ''}
   `;
@@ -206,11 +226,13 @@ function shopConcentrationNotice(items) {
   return `<p class="small muted">同じショップの候補が重なっています（最多: ${escapeHtml(worst[0])} ${worst[1]}件）。クリック数はショップ単位でしか取れないため、投稿日を分けると分析しやすくなります。</p>`;
 }
 
-function cardHtml(item, dateKey, state) {
+function cardHtml(item, dateKey, state, postedIndex) {
   // 投稿済み・予約は「この日のこの商品」に対する印。他の日には影響させない
   const stateKey = store.dayItemKey(dateKey, item.itemCode);
   const posted = Boolean(state.posted[stateKey]);
   const reserved = Boolean(state.reserved[stateKey]);
+  // 同じ商品が複数の日に出るため、別の日で投稿済みかを必ず見せる（二重投稿の防止）
+  const otherDays = store.postedOnOtherDays(postedIndex, item.itemCode, dateKey);
   const angle = state.postedAngle[item.itemCode] ?? item.draftComments?.[0]?.angle ?? null;
   const draft = draftFor(item, angle);
   const saved = state.comments[item.itemCode];
@@ -260,6 +282,10 @@ function cardHtml(item, dateKey, state) {
     isLimitedTimePrice(item) ? '<span class="badge badge--rate">期間限定価格</span>' : '',
     reserved ? '<span class="badge badge--reserved">予約済み</span>' : '',
     posted ? '<span class="badge badge--posted">投稿済み</span>' : '',
+    // 押した日と区別できるよう、日付を添えて別バッジにする
+    !posted && otherDays.length > 0
+      ? `<span class="badge badge--posted">${escapeHtml(otherDays[otherDays.length - 1])}に投稿済み</span>`
+      : '',
     `<span class="badge">hot ${item.hotScore}${item.dealScore ? `+お得${item.dealScore}` : ''}</span>`,
   ]
     .filter(Boolean)
@@ -269,6 +295,10 @@ function cardHtml(item, dateKey, state) {
     item.priceWarning ? `<div class="warnbar">${escapeHtml(item.priceWarning)}</div>` : '',
     item.priceMismatch
       ? `<div class="warnbar">表示価格(${fmtYen(item.itemPrice)})と価格帯(${fmtYen(item.itemPriceMin)}〜${fmtYen(item.itemPriceMax)})が食い違っています。商品ページで確認してください</div>`
+      : '',
+    // 同じ商品が別の日にも出るため、ここで気づけないと二重に投稿してしまう
+    otherDays.length > 0 && !posted
+      ? `<div class="warnbar warnbar--danger">この商品は <strong>${otherDays.map(escapeHtml).join('・')}</strong> にすでに投稿しています。ここで投稿すると同じ商品を重ねて出すことになります</div>`
       : '',
     sameShopPosted.length > 0
       ? `<div class="warnbar warnbar--danger">今日すでに同じショップ（${escapeHtml(item.shopName)}）の商品を${sameShopPosted.length}件投稿しています。いま投稿すると同日に重なり、クリック数はショップ単位でしか取れないため投稿別の分析ができなくなります</div>`

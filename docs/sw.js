@@ -17,7 +17,8 @@
 // v9: 追加要件v1.1（reviewAverage判定・クーポン抽出・dealScore・レビューURL）（2026-08-04）
 // v10: 絞り込み欄のラベル位置を揃えた（2026-08-07）
 // v11: 別の日に投稿済みの商品が分かるようにした（2026-08-07）
-const SHELL_VERSION = 'v11';
+// v12: 投稿プロンプト最終版に対応・分析用の特徴記録・レビュー増加表示（2026-08-08）
+const SHELL_VERSION = 'v12';
 const DATA_VERSION = 'v1';
 const SHELL_CACHE = `room-shell-${SHELL_VERSION}`;
 const DATA_CACHE = `room-data-${DATA_VERSION}`;
@@ -35,6 +36,7 @@ const SHELL_ASSETS = [
   './js/lib/filters.js',
   './js/lib/genres.js',
   './js/lib/itemName.js',
+  './js/lib/postFeatures.js',
   './js/lib/catalog.js',
   './js/lib/commentText.js',
   './js/lib/prompt.js',

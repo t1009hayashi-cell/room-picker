@@ -50,6 +50,12 @@ function emptyState() {
      * 「日付|itemCode」-> { reservedAt, scheduledDate }
      */
     reserved: {},
+    /**
+     * 投稿の分類（itemCode -> { headerType, angle, criteria[] }）。
+     * 外部のAIで作った文章を貼るため、アプリ側では角度が分からない。
+     * 分析のために投稿前に選んでもらった内容をここに置く。
+     */
+    postLabels: {},
     /** AI用プロンプトをコピーした商品。投稿ログの usedAiGeneration に使う */
     aiCopied: {},
     posts: [],
@@ -142,6 +148,7 @@ function migrate(raw) {
     posted: migratePosted(raw.posted, posts),
     // 予約投稿は後から足した項目。既存の保存データには入っていない
     reserved: migrateReserved(raw.reserved),
+    postLabels: raw.postLabels ?? {},
     aiCopied: raw.aiCopied ?? {},
     posts,
     results: Array.isArray(raw.results) ? raw.results : [],
@@ -276,6 +283,17 @@ export function setReserved(dateKey, itemCode, on, { scheduledDate = null, text 
       if (angle) s.postedAngle[itemCode] = angle;
     }
   });
+}
+
+/** 投稿の分類（ヘッダー型・角度・選定基準）を保存する */
+export function setPostLabel(itemCode, patch) {
+  update((s) => {
+    s.postLabels[itemCode] = { ...(s.postLabels[itemCode] ?? {}), ...patch };
+  });
+}
+
+export function getPostLabel(itemCode) {
+  return getState().postLabels[itemCode] ?? {};
 }
 
 export function isReserved(dateKey, itemCode) {

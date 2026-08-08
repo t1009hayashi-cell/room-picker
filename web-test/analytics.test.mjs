@@ -129,14 +129,13 @@ describe('集計指標（仕様書 10.4 / 10.5）', () => {
     assert.equal(Math.round(rows[0].rewardPerPost), Math.round((324 * 2) / MIN_SAMPLE));
   });
 
-  it('ヘッダーの文字数帯で分ける（推奨16〜24文字の前後で区切る）', () => {
-    assert.equal(firstLineBand(12), '〜15');
-    assert.equal(firstLineBand(20), '16〜24');
-    // 旧データ（1行目30〜35文字で作っていた投稿）はここにまとまる
-    assert.equal(firstLineBand(32), '25〜');
-    const posts = [post({ postId: 'a', firstLineLength: 20 }), post({ postId: 'b', firstLineLength: 12, itemNameRaw: 'x' })];
+  it('ヘッダーの文字数帯で分ける（推奨20〜30文字の前後で区切る）', () => {
+    assert.equal(firstLineBand(12), '〜19');
+    assert.equal(firstLineBand(25), '20〜30');
+    assert.equal(firstLineBand(32), '31〜');
+    const posts = [post({ postId: 'a', firstLineLength: 25 }), post({ postId: 'b', firstLineLength: 12, itemNameRaw: 'x' })];
     const { byPostId } = matchResults(posts, []);
-    assert.deepEqual(byFirstLineBand(posts, byPostId).map((r) => r.key).sort(), ['16〜24', '〜15']);
+    assert.deepEqual(byFirstLineBand(posts, byPostId).map((r) => r.key).sort(), ['20〜30', '〜19']);
   });
 
   it('確定・未確定・破棄を区別する', () => {
@@ -286,29 +285,42 @@ describe('投稿文テキストの分解', () => {
     assert.equal(body, '#タグ から始まる本文\n2行目');
   });
 
-  it('推奨の型への適合を測れる', () => {
-    // ヘッダー20文字（数字あり）＋本文で計140文字＋タグ3個＝適合
-    const header = `1本145円${'あ'.repeat(14)}`;
-    const ok = measureComment(`${header}\n${'い'.repeat(60)}\n${'う'.repeat(60)}\n#a #b #c`);
-    assert.equal(ok.firstLineLength, 20);
-    assert.equal(ok.totalLength, 140);
-    assert.equal(ok.lineCount, 3);
-    assert.equal(ok.headerHasNumber, true);
+  it('推奨の型への適合を測れる（投稿プロンプトの実測値）', () => {
+    // ヘッダー25字 ＋ 24字×12行=288字 ＝ 本文313字、タグ10個
+    const tags = Array.from({ length: 10 }, (_, i) => `#t${i}`).join(' ');
+    const bodyLines = Array.from({ length: 12 }, () => 'あ'.repeat(24)).join('\n');
+    const ok = measureComment(`${'ヘ'.repeat(25)}\n${bodyLines}\n${tags}`);
+
+    assert.equal(ok.firstLineLength, 25);
+    assert.equal(ok.totalLength, 25 + 24 * 12);
+    assert.equal(ok.lineCount, 13);
+    assert.equal(ok.longLines, 0);
     assert.equal(ok.endsWithPeriod, false);
     assert.equal(ok.withinRules, true);
 
-    // 短すぎる
-    assert.equal(measureComment('短い\n#a #b #c').withinRules, false);
+    // 短すぎる（旧基準の120〜180字はもう不適合）
+    assert.equal(measureComment(`${'あ'.repeat(25)}\n${'い'.repeat(120)}\n${tags}`).withinRules, false);
 
-    // ヘッダーに数字が無いと不適合（プロンプトが必須としている）
-    const noNumber = measureComment(`${'あ'.repeat(20)}\n${'い'.repeat(60)}\n${'う'.repeat(60)}\n#a #b #c`);
-    assert.equal(noNumber.headerHasNumber, false);
-    assert.equal(noNumber.withinRules, false);
+    // タグが3個だと不適合（10〜15個が推奨）
+    assert.equal(measureComment(`${'ヘ'.repeat(25)}\n${bodyLines}\n#a #b #c`).withinRules, false);
+
+    // 30字を超える行があると不適合（20〜24字で改行する）
+    const longLine = measureComment(`${'ヘ'.repeat(25)}\n${'あ'.repeat(40)}\n${bodyLines}\n${tags}`);
+    assert.equal(longLine.longLines, 1);
+    assert.equal(longLine.withinRules, false);
 
     // 文末が「。」だと不適合
-    const period = measureComment(`${header}\n${'い'.repeat(60)}\n${'う'.repeat(59)}。\n#a #b #c`);
+    const period = measureComment(`${'ヘ'.repeat(25)}\n${bodyLines}。\n${tags}`);
     assert.equal(period.endsWithPeriod, true);
     assert.equal(period.withinRules, false);
+  });
+
+  it('タグ込みの文字数を測れる（ROOMの上限500文字に収めるため）', () => {
+    const tags = Array.from({ length: 10 }, (_, i) => `#tag${i}`).join(' ');
+    const m = measureComment(`${'ヘ'.repeat(25)}\n${'あ'.repeat(100)}\n${tags}`);
+    assert.equal(m.totalLength, 125);
+    assert.equal(m.overallLength, 125 + tags.length);
+    assert.ok(m.overallLength > m.totalLength);
   });
 });
 

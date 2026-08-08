@@ -1,6 +1,6 @@
 import type { AppConfig } from './config.js';
 import { buildDraftComments } from './comment.js';
-import { buildPrevRankIndex, calcRankDiff, type PrevRankIndex } from './diff.js';
+import { buildPrevRankIndex, calcRankDiff, calcReviewDiff, type PrevRankIndex } from './diff.js';
 import { calcPointBoost, extractDiscount } from './discount.js';
 import { evaluateExclusion } from './filter.js';
 import { mergeByItemCode, normalizeItem, sortByRank, type NormalizedBase } from './normalize.js';
@@ -77,6 +77,8 @@ function enrich(
   const { scoring, ngWords } = options.config;
 
   const diff = calcRankDiff(base.itemCode, base.rank, base.source, prevIndex);
+  // 直近でレビューがどれだけ増えたか（人気が出ている商品を見分ける材料）
+  const reviewDiff = calcReviewDiff(base.itemCode, base.reviewCount, prevIndex);
   const reward = calcEstimatedReward(base, scoring);
 
   // クーポン・割引はテキストからの抽出（追加要件 2章）。数値としてのみ保持する
@@ -111,6 +113,7 @@ function enrich(
   return {
     ...base,
     ...diff,
+    ...reviewDiff,
     estimatedReward: reward.estimatedReward,
     rewardCapApplied: reward.rewardCapApplied,
     hotScore,
@@ -136,6 +139,10 @@ function enrich(
         month,
         // 期間限定価格の期限。セール速報の角度と「期限を必ず併記する」に使う
         priceEndTime: base.priceEndTime,
+        // 抽出した割引・クーポンは箇条書きの行に入れる（冒頭には置かない）
+        discountRate: discount.discountRate,
+        hasCoupon: discount.hasCoupon,
+        couponDeadlineRaw: discount.couponDeadlineRaw,
       },
       scoring,
       ngWords,

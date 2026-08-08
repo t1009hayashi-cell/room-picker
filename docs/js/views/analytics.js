@@ -18,6 +18,11 @@ import {
   byGenre,
   byHourBand,
   bySalePeriod,
+  byCriteria,
+  byFeatureFlag,
+  byHeaderType,
+  byLineLengthBand,
+  byTotalLengthBand,
   byWeekday,
   filterByPeriod,
   genreRatio,
@@ -116,8 +121,33 @@ export async function renderAnalytics(root) {
     <h2>角度別（最重要）</h2>
     ${summaryTable(byAngle(posts, byPostId), { label: '角度' })}
 
-    <h2>1行目の文字数帯</h2>
+    <h2>ヘッダー型別</h2>
+    <p class="small muted" style="margin:0 0 6px">
+      投稿時に選んだ冒頭1行の型。プロンプトの実測では共感課題型・状況名指し型が上位に多いとされています。
+    </p>
+    ${summaryTable(byHeaderType(posts, byPostId), { label: 'ヘッダー型' })}
+
+    <h2>選定基準別</h2>
+    <p class="small muted" style="margin:0 0 6px">
+      1つの投稿が複数の基準に当てはまるため、基準ごとに同じ投稿を数えています。合計は投稿数と一致しません。
+    </p>
+    ${summaryTable(byCriteria(posts, byPostId), { label: '基準' })}
+
+    <h2>ヘッダーの文字数帯</h2>
     ${summaryTable(byFirstLineBand(posts, byPostId), { label: '文字数' })}
+
+    <h2>投稿全体の文字数帯</h2>
+    ${summaryTable(byTotalLengthBand(posts, byPostId), { label: '文字数' })}
+
+    <h2>1行あたりの文字数</h2>
+    <p class="small muted" style="margin:0 0 6px">上位ほど1行が短いという実測があります（1〜10位で21文字）。</p>
+    ${summaryTable(byLineLengthBand(posts, byPostId), { label: '平均' })}
+
+    <h2>文章の作り</h2>
+    ${summaryTable(byFeatureFlag(posts, byPostId, 'hasOriginalPhotoTag', 'オリジナル写真'), { label: '写真' })}
+    ${summaryTable(byFeatureFlag(posts, byPostId, 'hasCta', 'CTA'), { label: 'CTA' })}
+    ${summaryTable(byFeatureFlag(posts, byPostId, 'hasBullets', '箇条書き'), { label: '箇条書き' })}
+    ${summaryTable(byFeatureFlag(posts, byPostId, 'hasDivider', '罫線'), { label: '罫線' })}
 
     <h2>セール期間内外</h2>
     ${summaryTable(bySalePeriod(posts, byPostId, app.sales), { label: '期間' })}

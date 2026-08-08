@@ -7,6 +7,7 @@
  */
 
 import { firstLineBand, jstParts } from './format.js';
+import { lineLengthBand, totalLengthBand } from './postFeatures.js';
 import { isDuringSale } from './schedule.js';
 
 export const MIN_SAMPLE = 10;
@@ -90,6 +91,55 @@ export function byAngle(posts, byPostId) {
 /** 層1：1行目の文字数帯 */
 export function byFirstLineBand(posts, byPostId) {
   return summarize(posts, byPostId, (post) => firstLineBand(post.firstLineLength ?? 0));
+}
+
+/* ---------- 実際に投稿した文章から測った層（投稿プロンプトの実測項目に対応） ---------- */
+
+const UNSET = '（未設定）';
+
+/** ヘッダー型別。実測では共感課題型・状況名指し型が上位に多いとされている */
+export function byHeaderType(posts, byPostId) {
+  return summarize(posts, byPostId, (post) => post.headerType ?? UNSET);
+}
+
+/**
+ * 選定基準別。1投稿が複数の基準に当てはまるため、**基準ごとに同じ投稿を数える**。
+ * 合計が投稿数と一致しないのは意図どおり。
+ */
+export function byCriteria(posts, byPostId) {
+  const rows = [];
+  const all = new Set();
+  for (const post of posts) for (const c of post.criteria ?? []) all.add(c);
+
+  for (const criterion of [...all].sort()) {
+    const subset = posts.filter((p) => (p.criteria ?? []).includes(criterion));
+    rows.push(...summarize(subset, byPostId, () => criterion));
+  }
+  const none = posts.filter((p) => (p.criteria ?? []).length === 0);
+  if (none.length > 0) rows.push(...summarize(none, byPostId, () => UNSET));
+  return rows;
+}
+
+/** 投稿全体の文字数帯。ROOMの上限は500文字 */
+export function byTotalLengthBand(posts, byPostId) {
+  return summarize(posts, byPostId, (post) =>
+    post.features ? totalLengthBand(post.features.totalLength) : UNSET,
+  );
+}
+
+/** 1行あたりの平均文字数帯。上位ほど1行が短いという実測がある */
+export function byLineLengthBand(posts, byPostId) {
+  return summarize(posts, byPostId, (post) =>
+    post.features ? lineLengthBand(post.features.averageLineLength) : UNSET,
+  );
+}
+
+/** 文章の作りの有無で比べる（CTA・箇条書き・罫線・オリジナル写真） */
+export function byFeatureFlag(posts, byPostId, flag, label) {
+  return summarize(posts, byPostId, (post) => {
+    if (!post.features) return UNSET;
+    return post.features[flag] ? `${label}あり` : `${label}なし`;
+  });
 }
 
 /** 層2：セール期間内外 */

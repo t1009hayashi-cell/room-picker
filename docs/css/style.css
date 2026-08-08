@@ -108,6 +108,14 @@ body {
     calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 24px);
   max-width: 720px;
   margin: 0 auto;
+  /*
+   * 横向きにしたときも縦向きと同じ幅で中央に置く。
+   * manifest に orientation: portrait を書いてあるが **iOS Safari はこれを無視する**ため、
+   * 端末を横にすると画面も横になる。回転そのものは止められないので、
+   * 幅を広げずレイアウトを縦向きのまま保って、見え方が変わらないようにする。
+   * （完全に回転させたくない場合は iOS の画面回転ロックを使ってもらう）
+   */
+  width: 100%;
   /* 候補0件の日など内容が短い画面でも、必ず画面全体を占める高さにする。
      box-sizing: border-box なので上下パディング（＝バー分の余白）を含む。 */
   min-height: 100vh;
@@ -426,6 +434,12 @@ thead th {
   color: #241000;
 }
 
+/* 直近のレビュー増加。伸びている商品が一目で分かるように色を付ける */
+.item__growth {
+  color: var(--ok);
+  font-weight: 700;
+}
+
 /* 割引前の価格。取り消し線で「下がった」ことを示す */
 .item__priceBefore {
   font-size: 12px;
@@ -460,6 +474,52 @@ thead th {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
+}
+
+/*
+ * 横向き（landscape）のときの見え方。
+ * iOSは回転を止められないため、横になっても縦向きと同じ体裁を保つ。
+ * 幅いっぱいに広がると1行が長くなりすぎて、縦向きと別物の画面に見えてしまう。
+ */
+@media (orientation: landscape) {
+  .view {
+    /* 縦向きのスマホと同じ読みやすさに寄せる */
+    max-width: 480px;
+  }
+
+  .appbar__title,
+  .tabbar {
+    /* バーだけ画面幅いっぱいに伸びると中身とずれて見えるので中央に寄せる */
+    max-width: none;
+  }
+}
+
+/* ---- 投稿の分類（分析用） ---- */
+.postlabel {
+  margin: 6px 0 2px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-elev2);
+}
+
+.postlabel > summary {
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.postlabel__checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.postlabel__check {
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 /* ---- ジャンル検索の候補 ---- */
@@ -699,6 +759,17 @@ details[open] > summary::before {
   display: flex;
   gap: 6px;
   margin: 8px 0 6px;
+  /*
+   * 角度名が長い（「ストック切れ回避型」など）ため、折り返さずに並べるとページ全体が
+   * 横に広がってしまう。チップ列と同じく、この行の中だけで横スクロールさせる。
+   */
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 4px;
+}
+
+.angle-tabs > .chip {
+  flex: 0 0 auto;
 }
 
 .warnbar {

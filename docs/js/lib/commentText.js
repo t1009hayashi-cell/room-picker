@@ -49,13 +49,19 @@ export function joinComment(body, hashtags) {
  * バッチ側は config/scoring.json の comment を使う。**両者は同じ値にすること。**
  */
 export const COMMENT_RULES = {
-  headerMin: 16,
-  headerMax: 24,
-  totalMin: 120,
-  totalMax: 180,
-  maxLines: 6,
-  hashtagMin: 3,
-  hashtagMax: 6,
+  // 投稿プロンプト（プロンプト/room_post_prompt_final.md）の実測値に合わせている
+  headerMin: 20,
+  headerMax: 30,
+  /** ハッシュタグを除いた本文 */
+  totalMin: 250,
+  totalMax: 330,
+  /** ROOMの上限は500文字。タグ込みで480文字以内に収める */
+  overallMax: 480,
+  maxLines: 24,
+  /** 1行の文字数。上位ほど短い（実測で1〜10位は21文字） */
+  lineMax: 30,
+  hashtagMin: 10,
+  hashtagMax: 15,
 };
 
 /** 編集中の投稿文が推奨の型に収まっているかを測る */
@@ -65,23 +71,29 @@ export function measureComment(text) {
   const firstLineLength = charLength(lines[0] ?? '');
   const totalLength = lines.reduce((sum, line) => sum + charLength(line), 0);
   const r = COMMENT_RULES;
+  const filled = lines.filter((l) => l.trim() !== '');
+  const overallLength = totalLength + hashtags.join(' ').length;
+  const longLines = filled.filter((l) => charLength(l) > r.lineMax).length;
+  const endsWithPeriod = filled.some((l) => /[。．]$/u.test(l));
+
   return {
     firstLineLength,
     totalLength,
-    lineCount: lines.length,
+    overallLength,
+    lineCount: filled.length,
     hashtagCount: hashtags.length,
-    // プロンプトが必須としている2点。守れていないと編集欄に警告が出る
-    headerHasNumber: /\d/.test(lines[0] ?? ''),
-    endsWithPeriod: lines.some((l) => /[。．]$/u.test(l)),
+    longLines,
+    endsWithPeriod,
     withinRules:
       firstLineLength >= r.headerMin &&
       firstLineLength <= r.headerMax &&
       totalLength >= r.totalMin &&
       totalLength <= r.totalMax &&
-      lines.length <= r.maxLines &&
+      overallLength <= r.overallMax &&
+      filled.length <= r.maxLines &&
+      longLines === 0 &&
       hashtags.length >= r.hashtagMin &&
       hashtags.length <= r.hashtagMax &&
-      /\d/.test(lines[0] ?? '') &&
-      !lines.some((l) => /[。．]$/u.test(l)),
+      !endsWithPeriod,
   };
 }

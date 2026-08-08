@@ -131,13 +131,13 @@ export function charLength(text) {
 
 /**
  * ヘッダー（1行目）の文字数帯（仕様書 10.4）。
- * 推奨が16〜24文字になったため、その前後で分かれるように区切る。
- * 旧データ（30〜35文字で作っていた投稿）は「25〜」にまとまる。
+ * 投稿プロンプトの推奨は20〜30文字（実測で上位10位の平均が32文字）。
+ * その前後で分かれるように区切る。
  */
 export function firstLineBand(length) {
-  if (length <= 15) return '〜15';
-  if (length <= 24) return '16〜24';
-  return '25〜';
+  if (length <= 19) return '〜19';
+  if (length <= 30) return '20〜30';
+  return '31〜';
 }
 
 export function uuid() {

@@ -9,6 +9,7 @@ import { copyToClipboard } from '../lib/prompt.js';
 import { isDuringSale } from '../lib/schedule.js';
 import { measureComment, splitComment } from '../lib/commentText.js';
 import { toSearchQuery } from '../lib/itemName.js';
+import { ANGLES, CRITERIA, HEADER_TYPES, extractPostFeatures } from '../lib/postFeatures.js';
 import * as store from '../lib/store.js';
 import {
   charLength,
@@ -40,6 +41,8 @@ const SORTS = [
   { id: 'deal', label: 'おすすめ順', compare: (a, b) => totalScore(b) - totalScore(a) },
   { id: 'hot', label: 'hot順', compare: (a, b) => b.hotScore - a.hotScore },
   { id: 'discount', label: '割引率順', compare: (a, b) => (b.discount?.discountRate ?? 0) - (a.discount?.discountRate ?? 0) },
+  // 「いま人気が出ている商品」を上に持ってくる
+  { id: 'reviewGrowth', label: 'レビュー増加順', compare: (a, b) => (b.reviewCountChange ?? 0) - (a.reviewCountChange ?? 0) },
   { id: 'reward', label: '想定報酬順', compare: (a, b) => (b.estimatedReward ?? 0) - (a.estimatedReward ?? 0) },
   { id: 'point', label: 'ポイント倍率順', compare: (a, b) => (b.pointRate ?? 0) - (a.pointRate ?? 0) },
 ];
@@ -204,6 +207,54 @@ export async function renderDayList(root, dateKey) {
   bind(root, dateKey);
 }
 
+/**
+ * 投稿の分類を選ぶ欄。
+ *
+ * **外部のAIで作った文章を貼って投稿するため、アプリ側では角度が分からない。**
+ * 分析するには「どの角度・どのヘッダー型で投稿したか」が要るので、投稿前に選んでもらう。
+ * 投稿プロンプトは「案1｜状況名指し × セール速報型」というラベルを出すので、
+ * その2つをそのまま選ぶだけで済むようにしている。
+ */
+function postLabelHtml(code, state) {
+  const label = state.postLabels?.[code] ?? {};
+  const opts = (list, selected) =>
+    ['<option value="">（未選択）</option>']
+      .concat(list.map((v) => `<option value="${escapeHtml(v)}" ${v === selected ? 'selected' : ''}>${escapeHtml(v)}</option>`))
+      .join('');
+
+  const criteria = CRITERIA.map(
+    (c) => `<label class="postlabel__check">
+      <input type="checkbox" data-criteria="${escapeHtml(code)}" value="${escapeHtml(c)}" ${(label.criteria ?? []).includes(c) ? 'checked' : ''} />
+      ${escapeHtml(c)}
+    </label>`,
+  ).join('');
+
+  return `<details class="postlabel">
+    <summary>投稿の分類${label.angle || label.headerType ? `（${escapeHtml([label.headerType, label.angle].filter(Boolean).join(' × '))}）` : '（未設定）'}</summary>
+    <p class="small muted" style="margin:6px 0">
+      AIが出した「案1｜状況名指し × セール速報型」のラベルをそのまま選んでください。
+      分析はここで選んだ内容で層別されます。
+    </p>
+    <div class="filters">
+      <label><span>ヘッダー型</span><select data-header-type="${escapeHtml(code)}">${opts(HEADER_TYPES, label.headerType)}</select></label>
+      <label><span>角度</span><select data-angle-label="${escapeHtml(code)}">${opts(ANGLES, label.angle)}</select></label>
+    </div>
+    <p class="small muted" style="margin:2px 0 4px">選定基準（当てはまるものすべて）</p>
+    <div class="postlabel__checks">${criteria}</div>
+  </details>`;
+}
+
+/**
+ * 直近でレビューがどれだけ増えたか。
+ * 「いま人気が出ている商品」を見分ける材料。前日データが無ければ何も出さない
+ * （0件増と「分からない」を区別する）。
+ */
+function reviewGrowth(item) {
+  const change = item.reviewCountChange;
+  if (change === null || change === undefined || change <= 0) return '';
+  return ` <span class="item__growth">+${fmtNum(change)}</span>`;
+}
+
 /** 0件のときの案内。絞り込みのせいで0件なのか、その日に候補が無いのかを言い分ける */
 function emptyMessage() {
   if (genreFilter !== 'all') return 'このジャンルに該当する商品はありません。ジャンルを「すべて」に戻すと表示されます。';
@@ -337,7 +388,7 @@ function cardHtml(item, dateKey, state, postedIndex) {
                 : priceNote
             }
           </span>
-          <span class="item__meta">★${item.reviewAverage} / ${fmtNum(item.reviewCount)}件</span>
+          <span class="item__meta">★${item.reviewAverage} / ${fmtNum(item.reviewCount)}件${reviewGrowth(item)}</span>
         </div>
         <p class="item__meta">
           想定報酬 <strong>${fmtYen(item.estimatedReward)}</strong>${rewardNote}
@@ -360,6 +411,7 @@ function cardHtml(item, dateKey, state, postedIndex) {
     <div class="angle-tabs">${angleTabs}</div>
     <textarea data-comment="${escapeHtml(item.itemCode)}" aria-label="投稿文">${escapeHtml(commentText)}</textarea>
     <p class="small muted" data-counter="${escapeHtml(item.itemCode)}"></p>
+    ${postLabelHtml(item.itemCode, state)}
 
     <div class="actions">
       <button class="btn btn--primary" data-copy-comment="${escapeHtml(item.itemCode)}">投稿文をコピー</button>
@@ -400,13 +452,14 @@ function updateCounter(root, code) {
   if (!area || !counter) return;
   const m = measureComment(area.value);
   const notes = [];
-  if (!m.headerHasNumber) notes.push('ヘッダーに数字を1つ');
   if (m.endsWithPeriod) notes.push('文末の「。」を外す');
+  if (m.longLines > 0) notes.push(`30字超の行が${m.longLines}行（20〜24字で改行）`);
+  if (m.overallLength > 480) notes.push('タグ込みで480字を超えています');
   counter.innerHTML =
-    `ヘッダー ${m.firstLineLength}文字 / 本文 ${m.totalLength}文字 / ${m.lineCount}行 / タグ${m.hashtagCount}個` +
+    `ヘッダー ${m.firstLineLength}字 / 本文 ${m.totalLength}字 / タグ込み ${m.overallLength}字 / ${m.lineCount}行 / タグ${m.hashtagCount}個` +
     (m.withinRules
       ? ''
-      : `<span class="hint">推奨: ヘッダー16〜24・本文120〜180・6行以内・タグ3〜6個${notes.length ? '／' + notes.join('・') : ''}</span>`);
+      : `<span class="hint">推奨: ヘッダー20〜30字・本文250〜330字・タグ込み480字以内・タグ10〜15個${notes.length ? '／' + notes.join('・') : ''}</span>`);
 }
 
 function bind(root, dateKey) {
@@ -515,6 +568,31 @@ function bind(root, dateKey) {
     });
   });
 
+  root.querySelectorAll('[data-header-type]').forEach((el) => {
+    el.addEventListener('change', () => {
+      store.setPostLabel(el.dataset.headerType, { headerType: el.value || null });
+      renderDayList(root, dateKey);
+    });
+  });
+
+  root.querySelectorAll('[data-angle-label]').forEach((el) => {
+    el.addEventListener('change', () => {
+      store.setPostLabel(el.dataset.angleLabel, { angle: el.value || null });
+      renderDayList(root, dateKey);
+    });
+  });
+
+  root.querySelectorAll('[data-criteria]').forEach((el) => {
+    el.addEventListener('change', () => {
+      const code = el.dataset.criteria;
+      const current = new Set(store.getPostLabel(code).criteria ?? []);
+      if (el.checked) current.add(el.value);
+      else current.delete(el.value);
+      // 表示順を固定するため CRITERIA の並びに揃える
+      store.setPostLabel(code, { criteria: CRITERIA.filter((c) => current.has(c)) });
+    });
+  });
+
   root.querySelectorAll('[data-copy-name]').forEach((el) => {
     el.addEventListener('click', async () => {
       const item = findItem(el.dataset.copyName);
@@ -555,6 +633,9 @@ function bind(root, dateKey) {
 
       const { body, hashtags } = splitComment(raw);
       const firstLine = body.split('\n')[0] ?? '';
+      // 貼り付けた実際の投稿文から特徴を取る。生成した下書きではなくこれを見る
+      const features = extractPostFeatures(raw);
+      const label = store.getPostLabel(code);
       // アプリ全体を JST 固定で扱うため、投稿ログも +09:00 表記で残す
       const postedAt = nowJstIso();
       const sale = isDuringSale(app.sales, postedAt);
@@ -574,7 +655,13 @@ function bind(root, dateKey) {
         itemPrice: item.itemPrice,
         estimatedReward: item.estimatedReward,
         reviewCount: item.reviewCount,
-        angle: state.postedAngle[code] ?? item.draftComments?.[0]?.angle ?? null,
+        reviewCountChange: item.reviewCountChange ?? null,
+        // 投稿前に選んでもらった分類。外部AIの文章を貼るため、これが無いと分析できない
+        angle: label.angle ?? null,
+        headerType: label.headerType ?? null,
+        criteria: label.criteria ?? [],
+        // 実際に投稿した文章から機械的に測れる特徴（analytics の層に使う）
+        features,
         firstLine,
         firstLineLength: charLength(firstLine),
         commentBody: body,
@@ -586,7 +673,13 @@ function bind(root, dateKey) {
         rankChangeAtPost: item.rankChange,
       });
 
-      toast('投稿ログを保存しました');
+      // 分類が無い投稿は分析で「（未設定）」に落ちる。あとから遡って付けられないので気づかせる
+      toast(
+        label.angle && label.headerType
+          ? '投稿ログを保存しました'
+          : '投稿ログを保存しました。「投稿の分類」が未設定です。分析に使うので選んでおいてください',
+        label.angle && label.headerType ? 2200 : 4200,
+      );
       renderDayList(root, dateKey);
     });
   });

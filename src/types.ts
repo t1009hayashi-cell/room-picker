@@ -145,6 +145,9 @@ export interface NormalizedItem {
 
   reviewCount: number;
   reviewAverage: number;
+  /** 前日のレビュー件数と増加数。前日データが無ければ null（0件増と区別する） */
+  prevReviewCount: number | null;
+  reviewCountChange: number | null;
 
   affiliateRate: number;
   affiliateRateSource: 'api' | 'genre-fallback';
@@ -301,11 +304,21 @@ export interface ScoringConfig {
     /** ヘッダー（1行目）の文字数。ROOMのフィードでは冒頭しか表示されない */
     firstLineMin: number;
     firstLineMax: number;
+    /** ハッシュタグを除いた本文の文字数 */
     totalMin: number;
     totalMax: number;
+    /** ハッシュタグ込みの上限。ROOMの本文上限は500文字 */
+    overallMax: number;
     maxLines: number;
+    /** 1行の上限。これを超えたら分割する */
+    lineMax: number;
+    /** 1行の目安。上位ほど短い（実測で1〜10位は21文字） */
+    lineTarget: number;
     hashtagMin: number;
     hashtagMax: number;
+    /** 記号付き箇条書きの行数 */
+    bulletMin: number;
+    bulletMax: number;
     /** 1商品につき作る案の数。増やすと日次JSONが大きくなる */
     draftCount?: number;
   };

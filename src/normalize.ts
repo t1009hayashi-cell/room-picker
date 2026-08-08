@@ -9,6 +9,8 @@ export type NormalizedBase = Omit<
   | 'prevRank'
   | 'rankChange'
   | 'isNew'
+  | 'prevReviewCount'
+  | 'reviewCountChange'
   | 'estimatedReward'
   | 'rewardCapApplied'
   | 'hotScore'

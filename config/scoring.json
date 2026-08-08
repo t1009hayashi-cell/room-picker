@@ -49,22 +49,6 @@
     "maxDurationDays": 60,
     "infiniteEndMarker": "9999-12-31 23:59"
   },
-  "comment": {
-    "_note": "投稿プロンプト（プロンプト/room_post_prompt_final.md）の実測値。ROOMの本文上限は500文字",
-    "firstLineMin": 20,
-    "firstLineMax": 30,
-    "totalMin": 250,
-    "totalMax": 330,
-    "overallMax": 480,
-    "maxLines": 24,
-    "lineMax": 30,
-    "lineTarget": 24,
-    "hashtagMin": 10,
-    "hashtagMax": 15,
-    "bulletMin": 3,
-    "bulletMax": 5,
-    "draftCount": 3
-  },
   "caption": {
     "shortLength": 300
   },

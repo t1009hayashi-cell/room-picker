@@ -112,16 +112,6 @@ const PAGE_SIZE = 30;
 let visibleCount = PAGE_SIZE;
 let lastKey = null;
 
-function draftFor(item, angle) {
-  const drafts = item.draftComments ?? [];
-  return drafts.find((d) => d.angle === angle) ?? drafts[0] ?? null;
-}
-
-function fullText(draft) {
-  if (!draft) return '';
-  return `${draft.text}\n${draft.hashtags.join(' ')}`;
-}
-
 function itemsForDate(dateKey) {
   const state = store.getState();
   const mode = state.settings.calendarMode;
@@ -284,10 +274,9 @@ function cardHtml(item, dateKey, state, postedIndex) {
   const reserved = Boolean(state.reserved[stateKey]);
   // 同じ商品が複数の日に出るため、別の日で投稿済みかを必ず見せる（二重投稿の防止）
   const otherDays = store.postedOnOtherDays(postedIndex, item.itemCode, dateKey);
-  const angle = state.postedAngle[item.itemCode] ?? item.draftComments?.[0]?.angle ?? null;
-  const draft = draftFor(item, angle);
-  const saved = state.comments[item.itemCode];
-  const commentText = saved ?? fullText(draft);
+  // 投稿文はアプリで生成しない（外部のAIで作った文章を貼る運用）。
+  // 予約時などに保存したものがあればそれを出し、無ければ空で始める
+  const commentText = state.comments[item.itemCode] ?? '';
   const scheduled = state.schedule[item.itemCode] ?? item.scheduledDate;
 
   const outOfStock = item.availability === 0;
@@ -361,12 +350,6 @@ function cardHtml(item, dateKey, state, postedIndex) {
     .filter(Boolean)
     .join('');
 
-  const angleTabs = (item.draftComments ?? [])
-    .map(
-      (d) =>
-        `<button class="chip" data-angle="${escapeHtml(d.angle)}" data-code="${escapeHtml(item.itemCode)}" aria-pressed="${d.angle === angle}">${escapeHtml(d.angle)}</button>`,
-    )
-    .join('');
 
   const rewardNote = item.rewardCapApplied ? '（上限適用）' : item.isRateBoosted ? '（上限なし）' : '';
   const priceNote = item.hasPriceRange ? `${fmtYen(item.itemPriceMin)}から` : fmtYen(item.itemPrice);
@@ -408,7 +391,6 @@ function cardHtml(item, dateKey, state, postedIndex) {
       ${item.priceEndTime ? `／価格期限 ${fmtDateShort(isoToDateKey(item.priceEndTime))}` : ''}
     </p>
 
-    <div class="angle-tabs">${angleTabs}</div>
     <textarea data-comment="${escapeHtml(item.itemCode)}" aria-label="投稿文">${escapeHtml(commentText)}</textarea>
     <p class="small muted" data-counter="${escapeHtml(item.itemCode)}"></p>
     ${postLabelHtml(item.itemCode, state)}
@@ -498,25 +480,13 @@ function bind(root, dateKey) {
     el.addEventListener('click', () => el.classList.toggle('item__name--full'));
   });
 
-  root.querySelectorAll('[data-angle]').forEach((el) => {
-    el.addEventListener('click', () => {
-      const { angle, code } = el.dataset;
-      const item = findItem(code);
-      const draft = draftFor(item, angle);
-      store.update((s) => {
-        s.postedAngle[code] = angle;
-        s.comments[code] = fullText(draft);
-      });
-      renderDayList(root, dateKey);
-    });
-  });
 
   root.querySelectorAll('[data-comment]').forEach((el) => {
     const code = el.dataset.comment;
     updateCounter(root, code);
     el.addEventListener('input', () => updateCounter(root, code));
     el.addEventListener('change', () => {
-      store.setComment(code, el.value, store.getState().postedAngle[code]);
+      store.setComment(code, el.value);
       toast('投稿文を保存しました');
     });
   });
@@ -541,7 +511,7 @@ function bind(root, dateKey) {
       const area = root.querySelector(`[data-comment="${CSS.escape(code)}"]`);
       const text = area?.value ?? '';
       if (!text.trim()) return toast('投稿文が空です');
-      store.setComment(code, text, store.getState().postedAngle[code]);
+      store.setComment(code, text);
       const ok = await copyToClipboard(text);
       toast(ok ? '投稿文をコピーしました。楽天ROOMに貼り付けてください' : 'コピーに失敗しました');
     });
@@ -562,7 +532,7 @@ function bind(root, dateKey) {
       const text = area?.value ?? '';
       if (!text.trim()) return toast('投稿文を入力してから予約してください');
 
-      store.setReserved(dateKey, code, true, { scheduledDate: dateKey, text, angle: state.postedAngle[code] });
+      store.setReserved(dateKey, code, true, { scheduledDate: dateKey, text });
       toast(`${dateKey} に予約しました。当日この日付を開くと「表示: 予約のみ」で出せます`);
       renderDayList(root, dateKey);
     });
@@ -629,7 +599,7 @@ function bind(root, dateKey) {
 
       const area = root.querySelector(`[data-comment="${CSS.escape(code)}"]`);
       const raw = area?.value ?? '';
-      store.setComment(code, raw, state.postedAngle[code]);
+      store.setComment(code, raw);
 
       const { body, hashtags } = splitComment(raw);
       const firstLine = body.split('\n')[0] ?? '';

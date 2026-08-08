@@ -43,11 +43,10 @@ const OTHER = '2026-08-11';
 describe('予約投稿（投稿文を先に書いて当日コピペする）', () => {
   it('予約すると投稿文も一緒に保存される', () => {
     reset();
-    store.setReserved(DAY, 'shop:1', true, { text: '本文です\n#タグ', angle: 'ストック切れ回避' });
+    store.setReserved(DAY, 'shop:1', true, { text: '本文です\n#タグ' });
 
     assert.equal(store.isReserved(DAY, 'shop:1'), true);
     assert.equal(store.getComment('shop:1'), '本文です\n#タグ');
-    assert.equal(store.getState().postedAngle['shop:1'], 'ストック切れ回避');
     assert.equal(store.getState().reserved[store.dayItemKey(DAY, 'shop:1')].scheduledDate, DAY);
   });
 

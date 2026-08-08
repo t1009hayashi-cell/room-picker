@@ -1,5 +1,4 @@
 import type { AppConfig } from './config.js';
-import { buildDraftComments } from './comment.js';
 import { buildPrevRankIndex, calcRankDiff, calcReviewDiff, type PrevRankIndex } from './diff.js';
 import { calcPointBoost, extractDiscount } from './discount.js';
 import { evaluateExclusion } from './filter.js';
@@ -125,28 +124,6 @@ function enrich(
     itemNumericId: null,
     reviewUrl: null,
     ...exclusion,
-    draftComments: buildDraftComments(
-      {
-        itemName: base.itemName,
-        genreName: genre.genreName,
-        itemPrice: base.itemPrice,
-        reviewCount: base.reviewCount,
-        reviewAverage: base.reviewAverage,
-        postageFlag: base.postageFlag,
-        // 追加要件3章: weak（3〜4倍）は投稿文で数字を出さない。
-        // 5,000円で3倍だと上乗せは約100円分で、「お得」と言い切るには弱いため
-        pointRate: pointBoost === 'strong' ? base.pointRate : 0,
-        month,
-        // 期間限定価格の期限。セール速報の角度と「期限を必ず併記する」に使う
-        priceEndTime: base.priceEndTime,
-        // 抽出した割引・クーポンは箇条書きの行に入れる（冒頭には置かない）
-        discountRate: discount.discountRate,
-        hasCoupon: discount.hasCoupon,
-        couponDeadlineRaw: discount.couponDeadlineRaw,
-      },
-      scoring,
-      ngWords,
-    ),
   };
 }
 

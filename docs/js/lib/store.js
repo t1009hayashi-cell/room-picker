@@ -42,7 +42,6 @@ function emptyState() {
     version: 1,
     schedule: {},
     comments: {},
-    postedAngle: {},
     /** 「日付|itemCode」-> true。押した日にだけ付く */
     posted: {},
     /**
@@ -144,7 +143,6 @@ function migrate(raw) {
     meta: { ...base.meta, ...(raw.meta ?? {}), settingsVersion: SETTINGS_VERSION },
     schedule: raw.schedule ?? {},
     comments: raw.comments ?? {},
-    postedAngle: raw.postedAngle ?? {},
     posted: migratePosted(raw.posted, posts),
     // 予約投稿は後から足した項目。既存の保存データには入っていない
     reserved: migrateReserved(raw.reserved),
@@ -244,15 +242,10 @@ export function getScheduledDate(itemCode) {
   return getState().schedule[itemCode] ?? null;
 }
 
-export function setComment(itemCode, text, angle) {
+export function setComment(itemCode, text) {
   update((s) => {
-    if (text) {
-      s.comments[itemCode] = text;
-      if (angle) s.postedAngle[itemCode] = angle;
-    } else {
-      delete s.comments[itemCode];
-      delete s.postedAngle[itemCode];
-    }
+    if (text) s.comments[itemCode] = text;
+    else delete s.comments[itemCode];
   });
 }
 
@@ -270,7 +263,7 @@ export function isPosted(dateKey, itemCode) {
  *
  * 投稿文は商品ごとに1つ（日付をまたいで共有する）。同じ商品なら書いた文面は使い回せるため。
  */
-export function setReserved(dateKey, itemCode, on, { scheduledDate = null, text = null, angle = null } = {}) {
+export function setReserved(dateKey, itemCode, on, { scheduledDate = null, text = null } = {}) {
   update((s) => {
     const key = dayItemKey(dateKey, itemCode);
     if (!on) {
@@ -278,10 +271,7 @@ export function setReserved(dateKey, itemCode, on, { scheduledDate = null, text 
       return;
     }
     s.reserved[key] = { reservedAt: new Date().toISOString(), scheduledDate: scheduledDate ?? dateKey };
-    if (text) {
-      s.comments[itemCode] = text;
-      if (angle) s.postedAngle[itemCode] = angle;
-    }
+    if (text) s.comments[itemCode] = text;
   });
 }
 

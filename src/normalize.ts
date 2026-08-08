@@ -24,7 +24,6 @@ export type NormalizedBase = Omit<
   | 'excludeReason'
   | 'excludeReasons'
   | 'newcomerExempt'
-  | 'draftComments'
 >;
 
 export interface NormalizeContext {

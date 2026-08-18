@@ -21,7 +21,8 @@
 // v13: 下書き生成を廃止・カレンダーの重なり修正・分類欄を縦積みに（2026-08-08）
 // v14: カレンダーをGoogleカレンダー風に・CSVエクスポート追加（2026-08-18）
 // v15: 追加要件v1.2（分類を4分類に固定・購入済み・いいね数・タグ候補）（2026-08-18）
-const SHELL_VERSION = 'v15';
+// v16: いいね数をまとめて入れる一覧画面（2026-08-18）
+const SHELL_VERSION = 'v16';
 const DATA_VERSION = 'v1';
 const SHELL_CACHE = `room-shell-${SHELL_VERSION}`;
 const DATA_CACHE = `room-data-${DATA_VERSION}`;
@@ -52,6 +53,7 @@ const SHELL_ASSETS = [
   './js/views/calendar.js',
   './js/views/dayList.js',
   './js/views/analytics.js',
+  './js/views/likes.js',
   './js/views/settings.js',
   './icons/icon-192.png',
   './icons/icon-512.png',

@@ -14,6 +14,7 @@ import {
   buildRateSuggestions,
   buildThresholdSuggestions,
   byPurchased,
+  latestLikeCount,
   labeledPosts,
   byFirstLineBand,
   byGenre,
@@ -99,6 +100,8 @@ export async function renderAnalytics(root) {
   const genreRows = byGenre(posts, byPostId);
   // 1.5: 分類方式v1の投稿は名称の対応が取れないので、分類の層からは外す
   const labeled = labeledPosts(posts);
+  // いいね数は成果より早く手に入る指標なので、入れ忘れを分析画面の入口で気づかせる
+  const unrecordedLikes = state.posts.filter((p) => latestLikeCount(p) === null).length;
   const labeledNote =
     labeled.length >= MIN_SAMPLE
       ? ''
@@ -135,6 +138,14 @@ export async function renderAnalytics(root) {
         ? '<div class="warnbar">成果データがありません。設定画面から注文明細レポートのCSVを取り込んでください（ダウンロードはPCからのみ可能です）。</div>'
         : ''
     }
+
+    <div class="card">
+      <div class="spread">
+        <span class="small">いいね数の記録</span>
+        <span class="small ${unrecordedLikes > 0 ? '' : 'muted'}">${unrecordedLikes > 0 ? `未記録 ${fmtNum(unrecordedLikes)}件` : 'すべて記録済み'}</span>
+      </div>
+      <a class="btn ${unrecordedLikes > 0 ? 'btn--primary' : ''} btn--block" href="#/likes">いいね数をまとめて入れる</a>
+    </div>
 
     <h2>ヘッダー型別（最重要）</h2>
     <p class="small muted" style="margin:0 0 6px">

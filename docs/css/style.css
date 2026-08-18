@@ -591,6 +591,43 @@ thead th {
   flex: 0 0 4.5em;
 }
 
+/* ---- いいね数の一覧 ---- */
+.likerow {
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px;
+  margin-bottom: 8px;
+}
+
+.likerow__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.likerow__name {
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 0;
+  /* 商品名は短縮しているが、それでも入りきらないことがある */
+  overflow-wrap: anywhere;
+}
+
+.likerow__now {
+  flex: 0 0 auto;
+  font-size: 14px;
+}
+
+.likerow__meta {
+  margin: 2px 0 6px;
+}
+
+.likerow__link {
+  flex: 0 0 4.5em;
+}
+
 /* ---- 選択ダイアログ ---- */
 .modal {
   position: fixed;

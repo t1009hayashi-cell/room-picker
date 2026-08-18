@@ -11,6 +11,7 @@ import { escapeHtml } from './lib/format.js';
 import { renderCalendar } from './views/calendar.js';
 import { renderDayList } from './views/dayList.js';
 import { renderAnalytics } from './views/analytics.js';
+import { renderLikes } from './views/likes.js';
 import { renderSettings } from './views/settings.js';
 
 const viewEl = document.getElementById('view');
@@ -85,7 +86,8 @@ function parseRoute() {
 }
 
 function setActiveTab(path) {
-  const tab = path === 'day' ? 'calendar' : path;
+  // 日別リストはカレンダーから、いいね記録は分析から入るので、親のタブを光らせる
+  const tab = path === 'day' ? 'calendar' : path === 'likes' ? 'analytics' : path;
   document.querySelectorAll('.tabbar__item').forEach((el) => {
     if (el.dataset.tab === tab) el.setAttribute('aria-current', 'page');
     else el.removeAttribute('aria-current');
@@ -112,6 +114,9 @@ export async function render() {
         break;
       case 'analytics':
         await renderAnalytics(viewEl);
+        break;
+      case 'likes':
+        await renderLikes(viewEl);
         break;
       case 'settings':
         await renderSettings(viewEl);

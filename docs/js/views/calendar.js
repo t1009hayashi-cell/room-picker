@@ -63,22 +63,27 @@ export async function renderCalendar(root) {
         .filter(Boolean)
         .join(' ');
 
-      const counts = [];
-      if (sum.todo > 0) counts.push(`<span class="cal__count cal__count--todo">${sum.todo}</span>`);
-      // 予約は「その日にやることがある」印なので、投稿済みより先に見えるようにする
-      if (sum.reserved > 0) counts.push(`<span class="cal__count cal__count--reserved">予${sum.reserved}</span>`);
-      if (sum.posted > 0) counts.push(`<span class="cal__count cal__count--posted">済${sum.posted}</span>`);
-      if (sum.rateBoosted > 0) counts.push(`<span class="cal__count cal__count--rate">UP</span>`);
+      // Googleカレンダーの月表示にならい、予定を「帯」として縦に積む。
+      // 幅が狭いので短い文言にし、入りきらないものは省略記号で切る。
+      const bars = [];
+      if (daySales.length > 0) {
+        bars.push(
+          `<span class="cal__bar cal__bar--sale">${escapeHtml(daySales.map((s) => s.displayName ?? s.name).join('/'))}</span>`,
+        );
+      }
+      // 予約は「その日にやることがある」印なので、投稿済みより先に見せる
+      if (sum.reserved > 0) bars.push(`<span class="cal__bar cal__bar--reserved">予約${sum.reserved}</span>`);
+      if (sum.posted > 0) bars.push(`<span class="cal__bar cal__bar--posted">投稿${sum.posted}</span>`);
+      if (sum.todo > 0) bars.push(`<span class="cal__bar cal__bar--todo">候補${sum.todo}</span>`);
 
-      const saleLabel =
-        daySales.length > 0
-          ? `<div class="cal__saleName">${escapeHtml(daySales.map((s) => s.displayName ?? s.name).join('/'))}</div>`
-          : '';
+      // 帯が多いと縦に伸びすぎるので、Googleカレンダーと同じく「他N件」にまとめる
+      const MAX_BARS = 3;
+      const shown = bars.slice(0, MAX_BARS);
+      if (bars.length > MAX_BARS) shown.push(`<span class="cal__more">他${bars.length - MAX_BARS}件</span>`);
 
       return `<div class="${classes}" data-dow="${cell.dow}" data-date="${cell.dateKey}" data-reward="${sum.reward}" data-count="${sum.total}">
         <span class="cal__date">${Number(cell.dateKey.slice(8))}</span>
-        <div class="cal__counts">${counts.join('')}</div>
-        ${saleLabel}
+        <div class="cal__bars">${shown.join('')}</div>
       </div>`;
     })
     .join('');

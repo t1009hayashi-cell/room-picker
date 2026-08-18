@@ -568,35 +568,51 @@ thead th {
   font-weight: 700;
 }
 
+/*
+ * カレンダー（Googleカレンダーの月表示に寄せた見た目）。
+ * セルごとの箱をやめ、細い罫線で区切ったフラットなグリッドにする。
+ * 予定は「帯」として縦に積み、多いときは「他N件」にまとめる。
+ */
 .cal__grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: 3px;
+  /* セル同士は罫線で分けるので隙間は作らない */
+  gap: 0;
+  border-top: 1px solid var(--line);
+  border-left: 1px solid var(--line);
   touch-action: pan-y;
 }
 
 .cal__dow {
   text-align: center;
   font-size: 11px;
+  font-weight: 600;
   color: var(--text-dim);
-  padding-bottom: 2px;
+  padding: 6px 0;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.cal__grid .cal__dow:first-child {
+  color: #ff8a8a;
+}
+
+.cal__grid .cal__dow:nth-child(7) {
+  color: #8ab4ff;
 }
 
 .cal__cell {
   position: relative;
-  /*
-   * 件数バッジ（候補数・予約・投稿済み・料率UP）が2行に折り返してもセール名と
-   * 重ならない高さ。カレンダー自体を大きくしてよい、というユーザーの判断による。
-   */
-  min-height: 84px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--bg-elev);
-  padding: 3px 4px;
+  /* 帯を3本＋「他N件」まで置ける高さ */
+  min-height: 92px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+  padding: 2px 2px 3px;
   display: flex;
   flex-direction: column;
+  align-items: stretch;
   gap: 2px;
-  font-size: 11px;
   cursor: pointer;
   /* iOS Safari 17未満は接頭辞付きしか解釈しないため、長押しで選択メニューが出る */
   -webkit-user-select: none;
@@ -606,86 +622,89 @@ thead th {
   overflow: hidden;
 }
 
+/* 前月・翌月の日。Googleカレンダーと同じく薄く出す */
 .cal__cell--out {
-  opacity: 0.35;
-}
-
-.cal__cell--today {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-}
-
-.cal__cell--sale::before {
-  content: '';
-  position: absolute;
-  inset: auto 0 0 0;
-  height: 14px;
-  background: color-mix(in srgb, var(--accent) 32%, transparent);
-}
-
-/*
- * セール名。
- * 以前は position: absolute でセルの下端に貼り付けていたが、件数バッジが
- * 2行に折り返すと重なった（予約バッジを足してから発生）。
- * 通常の並びに戻し、margin-top: auto で下寄せする。
- */
-.cal__saleName {
-  margin-top: auto;
-  line-height: 1.2;
-  font-size: 9px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text);
-}
-
-.cal__date {
-  font-weight: 700;
-  font-size: 12px;
-}
-
-.cal__cell[data-dow='0'] .cal__date {
-  color: #ff8a8a;
-}
-
-.cal__cell[data-dow='6'] .cal__date {
-  color: #8ab4ff;
-}
-
-.cal__counts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px;
-}
-
-.cal__count {
-  border-radius: 4px;
-  padding: 0 4px;
-  font-size: 10px;
-  font-weight: 700;
   background: var(--bg-elev2);
-  color: var(--text-dim);
+  opacity: 0.55;
 }
 
-.cal__count--todo {
-  background: color-mix(in srgb, var(--hot) 25%, transparent);
-  color: var(--text);
+/* 日付は上中央。今日は塗りつぶした丸で示す（Googleカレンダーと同じ扱い） */
+.cal__date {
+  align-self: center;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 20px;
+  min-width: 20px;
+  height: 20px;
+  text-align: center;
+  border-radius: 999px;
 }
 
-.cal__count--posted {
-  background: color-mix(in srgb, var(--ok) 28%, transparent);
-  color: var(--text);
-}
-
-.cal__count--reserved {
-  background: color-mix(in srgb, var(--warn) 32%, transparent);
-  color: var(--text);
-}
-
-.cal__count--rate {
+.cal__cell--today .cal__date {
   background: var(--accent);
   color: #fff;
 }
+
+.cal__cell[data-dow='0']:not(.cal__cell--today) .cal__date {
+  color: #ff8a8a;
+}
+
+.cal__cell[data-dow='6']:not(.cal__cell--today) .cal__date {
+  color: #8ab4ff;
+}
+
+/* 予定の帯 */
+.cal__bars {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cal__bar {
+  display: block;
+  border-radius: 3px;
+  padding: 0 3px;
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 15px;
+  /* 幅が狭いので入りきらない文字は省略する */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cal__bar--sale {
+  background: var(--accent);
+  color: #fff;
+}
+
+.cal__bar--reserved {
+  background: var(--warn);
+  color: #2b1d00;
+}
+
+.cal__bar--posted {
+  background: var(--ok);
+  color: #04240f;
+}
+
+/* 候補は「まだ何もしていない」印なので、他より控えめな枠線だけの帯にする */
+.cal__bar--todo {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+  /* 枠線の分だけ他の帯と高さが揃わなくなるのを戻す */
+  line-height: 13px;
+}
+
+.cal__more {
+  font-size: 9px;
+  color: var(--text-dim);
+  padding: 0 3px;
+  line-height: 13px;
+}
+
 
 /* ---- item card ---- */
 .item {

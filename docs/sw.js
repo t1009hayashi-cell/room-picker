@@ -19,7 +19,8 @@
 // v11: 別の日に投稿済みの商品が分かるようにした（2026-08-07）
 // v12: 投稿プロンプト最終版に対応・分析用の特徴記録・レビュー増加表示（2026-08-08）
 // v13: 下書き生成を廃止・カレンダーの重なり修正・分類欄を縦積みに（2026-08-08）
-const SHELL_VERSION = 'v13';
+// v14: カレンダーをGoogleカレンダー風に・CSVエクスポート追加（2026-08-18）
+const SHELL_VERSION = 'v14';
 const DATA_VERSION = 'v1';
 const SHELL_CACHE = `room-shell-${SHELL_VERSION}`;
 const DATA_CACHE = `room-data-${DATA_VERSION}`;
@@ -42,6 +43,7 @@ const SHELL_ASSETS = [
   './js/lib/commentText.js',
   './js/lib/prompt.js',
   './js/lib/csv.js',
+  './js/lib/csvExport.js',
   './js/lib/match.js',
   './js/lib/aggregate.js',
   './js/views/calendar.js',

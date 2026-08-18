@@ -7,6 +7,7 @@ import { app, refreshData, render, setAppBar, toast } from '../main.js';
 import * as store from '../lib/store.js';
 import { FIELD_LABELS, REQUIRED_FIELDS, buildResults, importCsv } from '../lib/csv.js';
 import { NEWCOMER } from '../lib/filters.js';
+import { POST_COLUMNS, RESULT_COLUMNS, toCsv } from '../lib/csvExport.js';
 import { loadGenreMaster } from '../lib/dataLoader.js';
 import { DEFAULT_COMMISSION_RATE, searchGenres } from '../lib/genres.js';
 import { copyToClipboard } from '../lib/prompt.js';
@@ -238,8 +239,22 @@ export async function renderSettings(root) {
     <h2>データのエクスポート／インポート</h2>
     <div class="card">
       <p class="small muted">iOSはSafariのストレージを削除することがあります。月1回を目安にエクスポートしてください。最終エクスポート: ${state.meta.lastExportAt ? escapeHtml(fmtDateTime(state.meta.lastExportAt)) : 'まだ実行していません'}</p>
-      <button class="btn btn--block btn--primary" data-action="export">JSONをエクスポート</button>
+      <button class="btn btn--block btn--primary" data-action="export">JSONをエクスポート（バックアップ用）</button>
       <input type="file" accept="application/json,.json" id="import-file" style="margin-top:8px" />
+    </div>
+
+    <h2>CSVで書き出す</h2>
+    <div class="card">
+      <p class="small muted">
+        表計算ソフトで自由に集計したいときに使います。Excelでそのまま開けます。
+        バックアップには上の「JSONをエクスポート」を使ってください（CSVは読み込めません）。
+      </p>
+      <button class="btn btn--block" data-action="export-posts-csv">投稿ログをCSVで書き出す（${fmtNum(state.posts.length)}件）</button>
+      <button class="btn btn--block" data-action="export-results-csv">成果データをCSVで書き出す（${fmtNum(state.results.length)}件）</button>
+      <p class="small muted" style="margin:8px 0 0">
+        投稿ログには、投稿の分類（ヘッダー型・角度・選定基準）と、
+        実際に投稿した文章から測った文字数・行数・箇条書き・CTAの有無まで列として入ります。
+      </p>
     </div>
 
     <h2>データの更新</h2>
@@ -317,8 +332,8 @@ function renderCsvResult(root, parsed) {
   });
 }
 
-function download(filename, text) {
-  const blob = new Blob([text], { type: 'application/json' });
+function download(filename, text, mime = 'application/json') {
+  const blob = new Blob([text], { type: `${mime};charset=utf-8` });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -539,6 +554,16 @@ function bind(root) {
     } else if (action === 'export') {
       download(`room-assist-${new Date().toISOString().slice(0, 10)}.json`, store.exportJson());
       toast('エクスポートしました');
+    } else if (action === 'export-posts-csv') {
+      const posts = store.getState().posts;
+      if (posts.length === 0) return toast('投稿ログがまだありません');
+      download(`room-posts-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(posts, POST_COLUMNS), 'text/csv');
+      toast(`投稿ログ${posts.length}件をCSVで書き出しました`);
+    } else if (action === 'export-results-csv') {
+      const results = store.getState().results;
+      if (results.length === 0) return toast('成果データがまだありません');
+      download(`room-results-${new Date().toISOString().slice(0, 10)}.csv`, toCsv(results, RESULT_COLUMNS), 'text/csv');
+      toast(`成果データ${results.length}件をCSVで書き出しました`);
     } else if (action === 'reload-data') {
       // 取得が終わったばかりの新しい日付を拾うため、キャッシュを捨てて index.json から読み直す
       const before = app.loadedDates.at(-1) ?? null;

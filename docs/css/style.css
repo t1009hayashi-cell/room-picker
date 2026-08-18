@@ -509,14 +509,19 @@ thead th {
   cursor: pointer;
 }
 
-/*
- * 分類の選択欄は**縦に1つずつ**並べる。
- * 2列にすると、選択肢が長いとき（「ストック切れ回避型」など）に
- * 片方の欄が潰れて読めなくなる（実機で発生。Chromiumでは再現しなかった）。
- * 縦積みなら幅を取り合わないので、構造的に起こらない。
- */
-.postlabel .filters {
-  grid-template-columns: 1fr;
+/* 購入済みのチェック。体験談とオリジナル写真が使えるようになる印なので目立たせる */
+.postlabel__purchase {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  margin: 8px 0 2px;
+}
+
+.postlabel__purchase input {
+  width: 18px;
+  height: 18px;
 }
 
 .postlabel__checks {
@@ -530,6 +535,134 @@ thead th {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+/* ---- ハッシュタグ候補 ---- */
+.tagrow {
+  margin: 6px 0 10px;
+}
+
+.tagrow__head {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.tagrow__title {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.tagrow__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+/* タグは数が多いので、通常のチップより一回り小さくする */
+.chip--tag {
+  font-size: 11px;
+  padding: 3px 8px;
+}
+
+/* ---- いいね数の記録 ---- */
+.likes {
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-elev2);
+}
+
+.likes__input {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.likes__input input {
+  flex: 1;
+  min-width: 0;
+}
+
+.likes__input .btn {
+  flex: 0 0 4.5em;
+}
+
+/* ---- 選択ダイアログ ---- */
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  /* iOS でアドレスバーが伸縮しても下端に張り付くようにする */
+  padding: 16px 12px calc(16px + env(safe-area-inset-bottom));
+}
+
+.modal__panel {
+  width: 100%;
+  max-width: 420px;
+  max-height: 80vh;
+  overflow-y: auto;
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px;
+}
+
+.modal__title {
+  font-size: 15px;
+  margin: 0 0 6px;
+}
+
+/* 実際に投稿した1行目を見せる欄。ここを見て型を選ぶので、本文と同じ見え方にする */
+.modal__desc {
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0 0 10px;
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--bg-elev2);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.modal__options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* 1タップで済ませたいので、指で押しやすい高さにする */
+.modal__option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  border-radius: 10px;
+  padding: 9px 12px;
+  text-align: left;
+}
+
+.modal__optionLabel {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.modal__optionNote {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-weight: 400;
+}
+
+.modal__cancel {
+  width: 100%;
+  margin-top: 10px;
 }
 
 /* ---- ジャンル検索の候補 ---- */

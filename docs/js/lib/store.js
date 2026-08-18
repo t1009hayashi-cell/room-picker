@@ -9,6 +9,8 @@
  * を必須とする。ここではその状態も保持する。
  */
 
+import { HEADER_TYPES } from './postFeatures.js';
+
 const KEY = 'room-assist:v1';
 const EXPORT_REMINDER_DAYS = 30;
 
@@ -50,11 +52,18 @@ function emptyState() {
      */
     reserved: {},
     /**
-     * 投稿の分類（itemCode -> { headerType, angle, criteria[] }）。
-     * 外部のAIで作った文章を貼るため、アプリ側では角度が分からない。
-     * 分析のために投稿前に選んでもらった内容をここに置く。
+     * 投稿の分類（itemCode -> { headerType, criteria[] }）。
+     * 外部のAIで作った文章を貼るため、アプリ側では分類が分からない。
+     * 分析のために投稿時に選んでもらった内容をここに置く。
+     * **角度は廃止した**（追加要件v1.2 1.1）。
      */
     postLabels: {},
+    /**
+     * 実際に買った商品（itemCode -> true）。追加要件v1.2 3章。
+     * 購入済みなら一人称の体験談とオリジナル写真が使えるため、
+     * AIへの指示とタグの促しが変わる。買う価値があるかを数字で見るための層でもある。
+     */
+    purchased: {},
     /** AI用プロンプトをコピーした商品。投稿ログの usedAiGeneration に使う */
     aiCopied: {},
     posts: [],
@@ -132,6 +141,27 @@ function migrateSettings(settings, meta) {
   return next;
 }
 
+/**
+ * 保存済みの分類を新しい4分類に合わせる。
+ *
+ * ヘッダー型の名称は v1.2 で総入れ替えになった（状況名指し型・数字型などは廃止）。
+ * 古い値が選択欄に残っていると、存在しない選択肢が選ばれた状態になって
+ * 何を選んだのか分からなくなる。**対応表は作らず、単に落とす。**
+ * 近い名前に読み替えると、分析できない偽のデータになるため。
+ */
+function migrateLabels(raw) {
+  const out = {};
+  for (const [code, label] of Object.entries(raw ?? {})) {
+    if (!label || typeof label !== 'object') continue;
+    const { angle, ...rest } = label; // 角度は廃止
+    out[code] = {
+      ...rest,
+      headerType: HEADER_TYPES.includes(label.headerType) ? label.headerType : null,
+    };
+  }
+  return out;
+}
+
 function migrate(raw) {
   const base = emptyState();
   if (!raw || typeof raw !== 'object') return base;
@@ -146,9 +176,12 @@ function migrate(raw) {
     posted: migratePosted(raw.posted, posts),
     // 予約投稿は後から足した項目。既存の保存データには入っていない
     reserved: migrateReserved(raw.reserved),
-    postLabels: raw.postLabels ?? {},
+    postLabels: migrateLabels(raw.postLabels),
+    purchased: raw.purchased ?? {},
     aiCopied: raw.aiCopied ?? {},
-    posts,
+    // 分類方式v1（角度あり・7分類）で記録した投稿は名称の対応が取れない。
+    // 遡って付け直さず、分析側で外せるように印だけ付ける（追加要件v1.2 1.5）
+    posts: posts.map((post) => (post.labelVersion ? post : { ...post, labelVersion: 'v1' })),
     results: Array.isArray(raw.results) ? raw.results : [],
     manualSales: Array.isArray(raw.manualSales) ? raw.manualSales : [],
     genreRateOverrides: raw.genreRateOverrides ?? {},
@@ -276,6 +309,7 @@ export function setReserved(dateKey, itemCode, on, { scheduledDate = null, text 
 }
 
 /** 投稿の分類（ヘッダー型・角度・選定基準）を保存する */
+/** 投稿の分類を控える。角度は廃止したので受け取らない（追加要件v1.2 1.1） */
 export function setPostLabel(itemCode, patch) {
   update((s) => {
     s.postLabels[itemCode] = { ...(s.postLabels[itemCode] ?? {}), ...patch };
@@ -284,6 +318,54 @@ export function setPostLabel(itemCode, patch) {
 
 export function getPostLabel(itemCode) {
   return getState().postLabels[itemCode] ?? {};
+}
+
+/**
+ * 実際に買った商品の印（追加要件v1.2 3章）。
+ *
+ * 購入済みなら一人称の体験談が書け、自分で撮った写真も使える。
+ * これは「上位と下位の差が最も大きい要因」として実測で挙がっているため、
+ * 買う価値があったかを後から数字で確かめられるよう、投稿ログにも残す。
+ */
+export function setPurchased(itemCode, on) {
+  update((s) => {
+    if (on) s.purchased[itemCode] = true;
+    else delete s.purchased[itemCode];
+  });
+}
+
+export function isPurchased(itemCode) {
+  return Boolean(state.purchased?.[itemCode]);
+}
+
+/**
+ * いいね数の記録（追加要件v1.2 2.1）。
+ *
+ * ROOMにAPIはなく画面もJavaScript描画のため自動取得できない。
+ * 週1回 my ROOM を見て転記してもらう。
+ * **上書きせず履歴として積む。** 投稿直後と1週間後で伸び方が違い、
+ * 初速の判定に使うため、いつ測った値かが要る。
+ */
+export function addLikeCount(postId, count, measuredAt = new Date().toISOString()) {
+  update((s) => {
+    const post = s.posts.find((p) => p.postId === postId);
+    if (!post) return;
+    if (!Array.isArray(post.likes)) post.likes = [];
+    post.likes.push({ count, measuredAt });
+  });
+}
+
+/** 直近に測ったいいね数。まだ測っていなければ null */
+export function latestLike(post) {
+  const likes = Array.isArray(post?.likes) ? post.likes : [];
+  if (likes.length === 0) return null;
+  return likes.reduce((a, b) => (String(b.measuredAt) >= String(a.measuredAt) ? b : a));
+}
+
+/** その日にその商品で作った投稿ログ。いいね数の記録先を引くのに使う */
+export function findPost(dateKey, itemCode) {
+  const posts = state.posts.filter((p) => p.itemCode === itemCode && (p.dateKey ?? null) === dateKey);
+  return posts.length === 0 ? null : posts[posts.length - 1];
 }
 
 export function isReserved(dateKey, itemCode) {

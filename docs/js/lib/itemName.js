@@ -64,7 +64,12 @@ const TOO_VAGUE = ['お試し', 'ギフト', 'セット', '訳あり', '新商�
  * 商品名を検索用の短い文字列にする。
  * 整形の結果が空になった場合は、元の商品名を上限で切ったものを返す（必ず何かを返す）。
  */
-export function toSearchQuery(itemName, maxLength = SEARCH_QUERY_MAX) {
+/**
+ * 商品名から販促文と記号を落とす。
+ * 検索用の短縮（`toSearchQuery`）とハッシュタグ候補（`tagSuggest`）の共通の下ごしらえ。
+ * **長さは切らない。** 切り方は用途ごとに違うため、呼び出し側に任せる。
+ */
+export function cleanName(itemName) {
   const original = String(itemName ?? '').trim();
   if (original === '') return '';
 
@@ -83,7 +88,14 @@ export function toSearchQuery(itemName, maxLength = SEARCH_QUERY_MAX) {
   // 販促文を落とした跡に残る先頭の句読点・記号を落とす（例:「！ 5個購入で…」）
   text = text.replace(/^[！!？?、。,.・\-‐–—/／]+\s*/u, '').trim();
 
-  const source = text === '' ? original : text;
+  return text === '' ? original : text;
+}
+
+export function toSearchQuery(itemName, maxLength = SEARCH_QUERY_MAX) {
+  const original = String(itemName ?? '').trim();
+  if (original === '') return '';
+
+  const source = cleanName(original);
   const picked = takeWords(source, maxLength);
 
   // 販促文を落としたら曖昧な語しか残らなかった場合。

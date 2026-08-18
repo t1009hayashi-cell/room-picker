@@ -37,7 +37,18 @@ function emptyBucket(key) {
     rewardConfirmed: 0,
     rewardPending: 0,
     discarded: 0,
+    /** いいね数を記録できている投稿だけの合計。未記録は分母に入れない（2.3） */
+    likeSum: 0,
+    likedPosts: 0,
   };
+}
+
+/** 直近に測ったいいね数。未記録なら null */
+export function latestLikeCount(post) {
+  const likes = Array.isArray(post?.likes) ? post.likes : [];
+  if (likes.length === 0) return null;
+  const latest = likes.reduce((a, b) => (String(b.measuredAt) >= String(a.measuredAt) ? b : a));
+  return Number.isFinite(latest?.count) ? latest.count : null;
 }
 
 function addResultTo(bucket, result) {
@@ -63,6 +74,11 @@ export function summarize(posts, byPostId, keyOf) {
       if (!buckets.has(key)) buckets.set(key, emptyBucket(key));
       const bucket = buckets.get(key);
       bucket.posts += 1;
+      const likes = latestLikeCount(post);
+      if (likes !== null) {
+        bucket.likeSum += likes;
+        bucket.likedPosts += 1;
+      }
       const results = byPostId.get(post.postId) ?? [];
       if (results.length > 0) bucket.convertedPosts += 1;
       for (const result of results) addResultTo(bucket, result);
@@ -77,15 +93,28 @@ function finalize(bucket) {
     ...bucket,
     enoughSample: enough,
     conversionRate: enough ? bucket.convertedPosts / bucket.posts : null,
+    /** 平均いいね数。**いいねを記録した投稿だけ**で割る（未記録を0とみなさない） */
+    averageLikes: bucket.likedPosts === 0 ? null : bucket.likeSum / bucket.likedPosts,
     rewardPerPost: enough ? bucket.reward / bucket.posts : null,
     discardRate: bucket.orders > 0 ? bucket.discarded / bucket.orders : null,
     actualRate: bucket.salesAmount > 0 ? bucket.reward / bucket.salesAmount : null,
   };
 }
 
-/** 層1：角度別（最重要） */
-export function byAngle(posts, byPostId) {
-  return summarize(posts, byPostId, (post) => post.angle ?? '（未設定）');
+/**
+ * 分類方式v2で記録した投稿だけを取り出す（追加要件v1.2 1.5）。
+ *
+ * v1は「角度」との2軸で、ヘッダー型の名称も今と違う（状況名指し型・数字型など）。
+ * 名称の対応が取れないうえ47件中27件が空欄のため、**混ぜずに切り捨てる。**
+ * 近い名前に読み替えると分析できない偽のデータになる。
+ */
+export function labeledPosts(posts) {
+  return posts.filter((post) => post.labelVersion === 'v2');
+}
+
+/** 購入済み／未購入で分ける。買う価値があるかを数字で見るための層（3章） */
+export function byPurchased(posts, byPostId) {
+  return summarize(posts, byPostId, (post) => (post.purchased ? '購入済み' : '未購入'));
 }
 
 /** 層1：1行目の文字数帯 */

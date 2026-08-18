@@ -7,9 +7,11 @@ import { app, setAppBar, toast, refreshData } from '../main.js';
 import { applyChips, CHIP_FILTERS, isLimitedTimePrice, REASON_LABELS, sameShopPostedOnDate } from '../lib/filters.js';
 import { copyToClipboard } from '../lib/prompt.js';
 import { isDuringSale } from '../lib/schedule.js';
-import { measureComment, splitComment } from '../lib/commentText.js';
+import { headerLine, measureComment, splitComment } from '../lib/commentText.js';
 import { toSearchQuery } from '../lib/itemName.js';
-import { ANGLES, CRITERIA, HEADER_TYPES, extractPostFeatures } from '../lib/postFeatures.js';
+import { chooseOne } from '../lib/modal.js';
+import { ORIGINAL_PHOTO_TAG, suggestTags, tagLine } from '../lib/tagSuggest.js';
+import { CRITERIA, HEADER_TYPES, LABEL_VERSION, extractPostFeatures } from '../lib/postFeatures.js';
 import * as store from '../lib/store.js';
 import {
   charLength,
@@ -197,20 +199,26 @@ export async function renderDayList(root, dateKey) {
   bind(root, dateKey);
 }
 
+/** ヘッダー型の説明。何を見て選ぶのかを1行で示す（判定は「投稿した1行目」だけで決まる） */
+const HEADER_TYPE_NOTES = {
+  共感課題型: '1行目が読み手の悩み・状況から始まる',
+  お得条件型: '1行目が割引率・価格・期限から始まる',
+  称号実績型: '1行目が受賞歴・ランキング・実績から始まる',
+  商品特徴型: '1行目が容量・加工・スペックから始まる',
+  判定不可: 'どれにも当てはまらない',
+};
+
 /**
- * 投稿の分類を選ぶ欄。
+ * 投稿の補助欄（選定基準・購入済み・タグ候補）。
  *
- * **外部のAIで作った文章を貼って投稿するため、アプリ側では角度が分からない。**
- * 分析するには「どの角度・どのヘッダー型で投稿したか」が要るので、投稿前に選んでもらう。
- * 投稿プロンプトは「案1｜状況名指し × セール速報型」というラベルを出すので、
- * その2つをそのまま選ぶだけで済むようにしている。
+ * **ヘッダー型はここに置かない。** 投稿ログ47件中27件が空欄になったのは、
+ * 入れなくても投稿を確定できたため。ヘッダー型は「投稿済みにする」の直前に
+ * ダイアログで必ず選んでもらう（追加要件v1.2 1.3）。
  */
-function postLabelHtml(code, state) {
+function postLabelHtml(item, state) {
+  const code = item.itemCode;
   const label = state.postLabels?.[code] ?? {};
-  const opts = (list, selected) =>
-    ['<option value="">（未選択）</option>']
-      .concat(list.map((v) => `<option value="${escapeHtml(v)}" ${v === selected ? 'selected' : ''}>${escapeHtml(v)}</option>`))
-      .join('');
+  const purchased = Boolean(state.purchased?.[code]);
 
   const criteria = CRITERIA.map(
     (c) => `<label class="postlabel__check">
@@ -219,18 +227,39 @@ function postLabelHtml(code, state) {
     </label>`,
   ).join('');
 
+  // 過去に使ったタグを渡して、自分のコレクションタグを候補に残す
+  const past = state.posts.flatMap((p) => p.hashtags ?? []);
+  const tags = suggestTags(item.itemName, { pastHashtags: past });
+  const tagRow = (title, list, note) =>
+    list.length === 0
+      ? ''
+      : `<div class="tagrow">
+          <div class="tagrow__head"><span class="tagrow__title">${escapeHtml(title)}</span><span class="small muted">${escapeHtml(note)}</span></div>
+          <div class="tagrow__tags">${list.map((tag) => `<button class="chip chip--tag" data-copy-tag="${escapeHtml(tag)}">#${escapeHtml(tag)}</button>`).join('')}</div>
+          <button class="btn btn--ghost small" data-copy-tags="${escapeHtml(tagLine(list))}">この層をまとめてコピー</button>
+        </div>`;
+
   return `<details class="postlabel">
-    <summary>投稿の分類${label.angle || label.headerType ? `（${escapeHtml([label.headerType, label.angle].filter(Boolean).join(' × '))}）` : '（未設定）'}</summary>
-    <p class="small muted" style="margin:6px 0">
-      AIが出した「案1｜状況名指し × セール速報型」のラベルをそのまま選んでください。
-      分析はここで選んだ内容で層別されます。
+    <summary>投稿の補助（選定基準・購入済み・タグ候補）</summary>
+
+    <label class="postlabel__purchase">
+      <input type="checkbox" data-purchased="${escapeHtml(code)}" ${purchased ? 'checked' : ''} />
+      <span>この商品は購入済み</span>
+    </label>
+    <p class="small muted" style="margin:2px 0 8px">
+      購入済みにすると、URLをコピーしたときにAIへ「一人称の体験談を書いてよい」と伝える1行が付きます。
+      自分で撮った写真を使う場合は <strong>#${escapeHtml(ORIGINAL_PHOTO_TAG)}</strong> も付けてください。
     </p>
-    <div class="filters">
-      <label><span>ヘッダー型</span><select data-header-type="${escapeHtml(code)}">${opts(HEADER_TYPES, label.headerType)}</select></label>
-      <label><span>角度</span><select data-angle-label="${escapeHtml(code)}">${opts(ANGLES, label.angle)}</select></label>
-    </div>
+
     <p class="small muted" style="margin:2px 0 4px">選定基準（当てはまるものすべて）</p>
     <div class="postlabel__checks">${criteria}</div>
+
+    <p class="small muted" style="margin:10px 0 4px">
+      ハッシュタグ候補（タップでコピー）。フォロワーが少ないうちは<strong>ニッチが唯一の露出経路</strong>です。
+    </p>
+    ${tagRow('ニッチ', tags.niche, '3〜5個')}
+    ${tagRow('中規模', tags.mid, '3〜4個')}
+    ${tagRow('ビッグ', tags.big, '2〜3個')}
   </details>`;
 }
 
@@ -393,7 +422,7 @@ function cardHtml(item, dateKey, state, postedIndex) {
 
     <textarea data-comment="${escapeHtml(item.itemCode)}" aria-label="投稿文">${escapeHtml(commentText)}</textarea>
     <p class="small muted" data-counter="${escapeHtml(item.itemCode)}"></p>
-    ${postLabelHtml(item.itemCode, state)}
+    ${postLabelHtml(item, state)}
 
     <div class="actions">
       <button class="btn btn--primary" data-copy-comment="${escapeHtml(item.itemCode)}">投稿文をコピー</button>
@@ -421,7 +450,38 @@ function cardHtml(item, dateKey, state, postedIndex) {
     <button class="btn ${posted ? '' : 'btn--primary'} btn--block" data-post="${escapeHtml(item.itemCode)}">
       ${posted ? '投稿済みを取り消す' : '投稿済みにする'}
     </button>
+    ${posted ? likesHtml(dateKey, item.itemCode) : ''}
   </article>`;
+}
+
+/**
+ * いいね数の記録欄（追加要件v1.2 2.1）。
+ *
+ * ROOMにAPIはなく、画面もJavaScript描画のため自動では取れない。
+ * 週1回 my ROOM を見て転記する運用を想定している。
+ * **上書きせず履歴で持つ。** 投稿直後と1週間後で伸び方が違うため、
+ * 初速を見るには「いつ測ったか」が要る。
+ */
+function likesHtml(dateKey, itemCode) {
+  const post = store.findPost(dateKey, itemCode);
+  if (!post) return '';
+  const latest = store.latestLike(post);
+  const history = (post.likes ?? [])
+    .slice(-4)
+    .map((l) => `${fmtNum(l.count)}（${fmtDateShort(String(l.measuredAt).slice(0, 10))}）`)
+    .join(' → ');
+
+  return `<div class="likes">
+    <div class="spread">
+      <span class="small muted">いいね数</span>
+      <span class="small">${latest ? `<strong>${fmtNum(latest.count)}</strong>` : '未記録'}</span>
+    </div>
+    <div class="likes__input">
+      <input type="number" inputmode="numeric" min="0" step="1" placeholder="my ROOMの数値" data-like="${escapeHtml(post.postId)}" aria-label="いいね数" />
+      <button class="btn" data-like-save="${escapeHtml(post.postId)}">記録</button>
+    </div>
+    ${history ? `<p class="small muted" style="margin:4px 0 0">${escapeHtml(history)}</p>` : ''}
+  </div>`;
 }
 
 function findItem(code) {
@@ -538,20 +598,6 @@ function bind(root, dateKey) {
     });
   });
 
-  root.querySelectorAll('[data-header-type]').forEach((el) => {
-    el.addEventListener('change', () => {
-      store.setPostLabel(el.dataset.headerType, { headerType: el.value || null });
-      renderDayList(root, dateKey);
-    });
-  });
-
-  root.querySelectorAll('[data-angle-label]').forEach((el) => {
-    el.addEventListener('change', () => {
-      store.setPostLabel(el.dataset.angleLabel, { angle: el.value || null });
-      renderDayList(root, dateKey);
-    });
-  });
-
   root.querySelectorAll('[data-criteria]').forEach((el) => {
     el.addEventListener('change', () => {
       const code = el.dataset.criteria;
@@ -579,13 +625,27 @@ function bind(root, dateKey) {
     el.addEventListener('click', async () => {
       const item = findItem(el.dataset.copyUrl);
       if (!item?.itemUrl) return toast('この商品にはURLがありません');
-      const ok = await copyToClipboard(item.itemUrl);
-      toast(ok ? '商品URLをコピーしました' : 'コピーに失敗しました');
+      // 追加要件v1.2 3.2: 購入済みならAIに体験談を書いてよいと伝える。
+      // 投稿文の生成は廃止したので、AIに渡るのはこのURLだけ。ここに書き添えるしかない。
+      // URLを1行目に置いて、URLだけ使いたいときも壊れないようにする
+      const purchased = Boolean(store.getState().purchased?.[item.itemCode]);
+      const text = purchased
+        ? `${item.itemUrl}
+【この商品は購入済み。一人称の体験談を書いてよい】`
+        : item.itemUrl;
+      const ok = await copyToClipboard(text);
+      toast(
+        ok
+          ? purchased
+            ? '購入済みの注記つきでURLをコピーしました'
+            : '商品URLをコピーしました'
+          : 'コピーに失敗しました',
+      );
     });
   });
 
   root.querySelectorAll('[data-post]').forEach((el) => {
-    el.addEventListener('click', () => {
+    el.addEventListener('click', async () => {
       const code = el.dataset.post;
       const state = store.getState();
       if (store.isPosted(dateKey, code)) {
@@ -602,10 +662,24 @@ function bind(root, dateKey) {
       store.setComment(code, raw);
 
       const { body, hashtags } = splitComment(raw);
-      const firstLine = body.split('\n')[0] ?? '';
+      // 1.4: 先頭の空行やタグ行ではなく、本文の最初の中身のある行をヘッダーとして残す
+      const firstLine = headerLine(raw);
+
+      // 1.3: 分類を選ばないと確定できない。
+      // 実際に投稿した1行目を見せて、その場で判定してもらう
+      const headerType = await chooseOne({
+        title: '投稿の1行目はどれ？',
+        description: firstLine === '' ? '（1行目が空です）' : firstLine,
+        options: HEADER_TYPES.map((v) => ({ value: v, label: v, note: HEADER_TYPE_NOTES[v] })),
+        cancelLabel: 'まだ投稿しない',
+      });
+      if (headerType === null) return;
+      store.setPostLabel(code, { headerType });
+
       // 貼り付けた実際の投稿文から特徴を取る。生成した下書きではなくこれを見る
       const features = extractPostFeatures(raw);
       const label = store.getPostLabel(code);
+      const purchased = Boolean(state.purchased?.[code]);
       // アプリ全体を JST 固定で扱うため、投稿ログも +09:00 表記で残す
       const postedAt = nowJstIso();
       const sale = isDuringSale(app.sales, postedAt);
@@ -626,15 +700,19 @@ function bind(root, dateKey) {
         estimatedReward: item.estimatedReward,
         reviewCount: item.reviewCount,
         reviewCountChange: item.reviewCountChange ?? null,
-        // 投稿前に選んでもらった分類。外部AIの文章を貼るため、これが無いと分析できない
-        angle: label.angle ?? null,
-        headerType: label.headerType ?? null,
+        // 投稿時に選んでもらった分類。外部AIの文章を貼るため、これが無いと分析できない
+        headerType,
         criteria: label.criteria ?? [],
+        /** 分類方式の世代。v1（角度あり）とは集計を混ぜない（1.5） */
+        labelVersion: LABEL_VERSION,
+        /** 実際に買った商品か。体験談・オリジナル写真の効果を測るための層（3章） */
+        purchased,
         // 実際に投稿した文章から機械的に測れる特徴（analytics の層に使う）
         features,
         firstLine,
         firstLineLength: charLength(firstLine),
         commentBody: body,
+        // 4.3: タグは本文から機械的に取る。列によって入り方が違う状態を無くす
         hashtags,
         usedAiGeneration: Boolean(state.aiCopied[code]),
         duringSale: sale.during,
@@ -643,14 +721,47 @@ function bind(root, dateKey) {
         rankChangeAtPost: item.rankChange,
       });
 
-      // 分類が無い投稿は分析で「（未設定）」に落ちる。あとから遡って付けられないので気づかせる
+      const warn = [];
+      if (hashtags.length === 0) warn.push('ハッシュタグが本文から見つかりません');
+      if (purchased && !hashtags.some((tag) => tag.includes(ORIGINAL_PHOTO_TAG))) {
+        warn.push(`購入済みなら #${ORIGINAL_PHOTO_TAG} を付けてください`);
+      }
       toast(
-        label.angle && label.headerType
-          ? '投稿ログを保存しました'
-          : '投稿ログを保存しました。「投稿の分類」が未設定です。分析に使うので選んでおいてください',
-        label.angle && label.headerType ? 2200 : 4200,
+        warn.length === 0 ? `投稿ログを保存しました（${headerType}）` : `保存しました。${warn.join(' / ')}`,
+        warn.length === 0 ? 2200 : 4200,
       );
       renderDayList(root, dateKey);
+    });
+  });
+
+  root.querySelectorAll('[data-like-save]').forEach((el) => {
+    el.addEventListener('click', () => {
+      const postId = el.dataset.likeSave;
+      const input = root.querySelector(`[data-like="${CSS.escape(postId)}"]`);
+      const count = Number(input?.value);
+      if (!Number.isFinite(count) || count < 0 || input.value.trim() === '') {
+        return toast('いいね数を数字で入れてください');
+      }
+      // 記録した日を持つ。投稿直後と1週間後で伸び方が違うため、いつの値かが要る
+      store.addLikeCount(postId, Math.round(count), nowJstIso());
+      toast('いいね数を記録しました');
+      renderDayList(root, dateKey);
+    });
+  });
+
+  root.querySelectorAll('[data-purchased]').forEach((el) => {
+    el.addEventListener('change', () => {
+      store.setPurchased(el.dataset.purchased, el.checked);
+      toast(el.checked ? '購入済みにしました。体験談とオリジナル写真が使えます' : '購入済みを外しました');
+      renderDayList(root, dateKey);
+    });
+  });
+
+  root.querySelectorAll('[data-copy-tag], [data-copy-tags]').forEach((el) => {
+    el.addEventListener('click', async () => {
+      const text = el.dataset.copyTags ?? `#${el.dataset.copyTag}`;
+      const ok = await copyToClipboard(text);
+      toast(ok ? `コピーしました: ${text}` : 'コピーに失敗しました', 2600);
     });
   });
 }

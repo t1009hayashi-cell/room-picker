@@ -5,7 +5,9 @@ import {
   MIN_SAMPLE,
   buildRateSuggestions,
   buildThresholdSuggestions,
-  byAngle,
+  byHeaderType,
+  byPurchased,
+  labeledPosts,
   byFirstLineBand,
   bySalePeriod,
   byWeekday,
@@ -32,7 +34,8 @@ function post(patch = {}) {
     itemPrice: 5398,
     estimatedReward: 324,
     reviewCount: 43088,
-    angle: 'ストック切れ回避',
+    headerType: '共感課題型',
+    labelVersion: 'v2',
     firstLine: 'コーヒー、切らしてから慌てて買っていませんか？',
     firstLineLength: 24,
     commentBody: '本文',
@@ -111,7 +114,7 @@ describe('集計指標（仕様書 10.4 / 10.5）', () => {
   it('投稿数が10件未満の区分は数値を出さない', () => {
     const posts = Array.from({ length: 9 }, (_, i) => post({ postId: `p${i}`, itemNameRaw: `商品${i}` }));
     const { byPostId } = matchResults(posts, []);
-    const rows = byAngle(posts, byPostId);
+    const rows = byHeaderType(posts, byPostId);
     assert.equal(rows[0].posts, 9);
     assert.equal(rows[0].enoughSample, false);
     assert.equal(rows[0].conversionRate, null);
@@ -122,7 +125,7 @@ describe('集計指標（仕様書 10.4 / 10.5）', () => {
     const posts = Array.from({ length: MIN_SAMPLE }, (_, i) => post({ postId: `p${i}`, itemNameRaw: `商品${i}` }));
     const results = [result({ itemNameRaw: '商品0' }), result({ itemNameRaw: '商品1' })];
     const { byPostId } = matchResults(posts, results);
-    const rows = byAngle(posts, byPostId);
+    const rows = byHeaderType(posts, byPostId);
     assert.equal(rows[0].enoughSample, true);
     assert.equal(rows[0].convertedPosts, 2);
     assert.equal(rows[0].conversionRate, 0.2);
@@ -146,7 +149,7 @@ describe('集計指標（仕様書 10.4 / 10.5）', () => {
 
     const posts = [post()];
     const { byPostId } = matchResults(posts, [result({ status: '確定' }), result({ status: '破棄', occurredAt: '2026-08-06T10:00:00+09:00' })]);
-    const row = byAngle(posts, byPostId)[0];
+    const row = byHeaderType(posts, byPostId)[0];
     assert.equal(row.rewardConfirmed, 324);
     assert.equal(row.discarded, 1);
     // 破棄分は報酬に含めない

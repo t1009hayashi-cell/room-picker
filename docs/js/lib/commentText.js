@@ -23,21 +23,69 @@ function tagsOf(line) {
  * 末尾に置くのが基本だが、投稿プロンプトは「ハッシュタグを1行目に置く形式も上位に見られる」
  * として先頭に置く形も認めている。先頭に置いた投稿でタグ0個と数えてしまうと、
  * 編集欄に常に警告が出て、投稿ログのハッシュタグも空で保存されてしまう。
+ *
+ * **タグ行は複数行にまたがる。** プロンプトの出力例は10〜12個のタグを4〜5行に分けて置く。
+ * 1行だけ切り離す実装だと残りが本文に混ざり、タグ数も過少に記録される
+ * （追加要件v1.2 4.3 で「タグ数0の行がある」として報告された不具合）。
+ * 連続するタグ行はまとめて切り離す。
  */
 export function splitComment(text) {
   const raw = String(text ?? '');
   const lines = raw.split('\n');
   if (lines.length > 1) {
-    const last = lines[lines.length - 1] ?? '';
-    if (isHashtagLine(last)) {
-      return { body: lines.slice(0, -1).join('\n').trimEnd(), hashtags: tagsOf(last) };
+    // 末尾から、タグだけの行が続くかぎりさかのぼる。
+    // 途中の空行はタグ群の一部とみなす（タグ行の間に空行を挟む書き方があるため）
+    let end = lines.length;
+    let firstTag = end;
+    for (let i = end - 1; i >= 0; i -= 1) {
+      const line = lines[i];
+      if (isHashtagLine(line)) {
+        firstTag = i;
+        continue;
+      }
+      // 空行はタグ群の一部として読み飛ばす（末尾の余分な改行や、タグ行の間の空行）
+      if (line.trim() === '') continue;
+      break;
     }
-    const first = lines[0] ?? '';
-    if (isHashtagLine(first)) {
-      return { body: lines.slice(1).join('\n').trim(), hashtags: tagsOf(first) };
+    if (firstTag < end) {
+      return {
+        body: lines.slice(0, firstTag).join('\n').trimEnd(),
+        hashtags: lines.slice(firstTag).flatMap(tagsOf),
+      };
+    }
+
+    // 先頭に置く形。こちらも複数行にまたがることがある
+    let lastTag = -1;
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i];
+      if (isHashtagLine(line)) {
+        lastTag = i;
+        continue;
+      }
+      // 先頭の空行もタグを探す前に読み飛ばす
+      if (line.trim() === '') continue;
+      break;
+    }
+    if (lastTag >= 0) {
+      return {
+        body: lines.slice(lastTag + 1).join('\n').trim(),
+        hashtags: lines.slice(0, lastTag + 1).flatMap(tagsOf),
+      };
     }
   }
   return { body: raw.trim(), hashtags: [] };
+}
+
+/**
+ * 投稿の「ヘッダー」＝本文の最初の1行。
+ *
+ * 追加要件v1.2 1.4。`body.split('\n')[0]` だと先頭の空行や、
+ * 先頭に置いたタグ行をヘッダーとして保存してしまう。
+ * タグを除いた本文の、**最初の中身のある行**だけを返す。
+ */
+export function headerLine(text) {
+  const { body } = splitComment(text);
+  return body.split('\n').find((line) => line.trim() !== '')?.trim() ?? '';
 }
 
 export function joinComment(body, hashtags) {
@@ -68,7 +116,7 @@ export const COMMENT_RULES = {
 export function measureComment(text) {
   const { body, hashtags } = splitComment(text);
   const lines = body === '' ? [] : body.split('\n');
-  const firstLineLength = charLength(lines[0] ?? '');
+  const firstLineLength = charLength(lines.find((l) => l.trim() !== '') ?? '');
   const totalLength = lines.reduce((sum, line) => sum + charLength(line), 0);
   const r = COMMENT_RULES;
   const filled = lines.filter((l) => l.trim() !== '');

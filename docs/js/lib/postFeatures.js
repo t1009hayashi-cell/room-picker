@@ -7,7 +7,7 @@
  * そのまま投稿ログに記録しても、実際の文章と一致せず分析にならない。
  *
  * 対策は2つ。
- *  1. **人にしか分からないもの（角度・ヘッダー型・選定基準）は投稿時に選んでもらう**
+ *  1. **人にしか分からないもの（ヘッダー型・選定基準）は投稿時に選んでもらう**
  *  2. **文章から機械的に測れるものは、貼り付けた本文から自動で取る**
  *
  * ここは 2 を担う。投稿プロンプトが実測で挙げている要素
@@ -15,24 +15,39 @@
  */
 
 import { charLength } from './format.js';
-import { splitComment } from './commentText.js';
+import { headerLine, splitComment } from './commentText.js';
 
-/** 投稿の角度。投稿プロンプトの「5案の作り方」に載っている7種 */
-export const ANGLES = [
-  'スーパーにない型',
-  '評判の裏取り型',
-  'セール速報型',
-  '献立負担型',
-  'ストック切れ回避型',
-  '季節型',
-  'ギフト型',
+/**
+ * 投稿の分類。**ヘッダー型の1軸だけ**（追加要件v1.2 1.1 / 1.2）。
+ *
+ * 以前は「角度」7分類との2軸だったが、投稿ログ47件を7分類に割ると
+ * 1区分あたり数件にしかならず、「投稿数10件未満の区分は数値を出さない」という
+ * 既存方針に照らして最初から分析不能だった。角度は廃止し1軸に統合した。
+ *
+ * **この名称は今後変更しない。** 名称が変わるたびに選択肢と過去データがずれ、
+ * 「近いものを選ぶ」運用になって偽のデータが溜まる（47件中27件が空欄になった原因）。
+ *
+ * 判定は「実際に投稿した1行目が何から始まるか」だけで行う。
+ */
+export const HEADER_TYPES = [
+  '共感課題型', // 読み手の悩み・状況
+  'お得条件型', // 割引率・価格・期限
+  '称号実績型', // 受賞歴・ランキング・実績
+  '商品特徴型', // 容量・加工・スペック
+  '判定不可', // どれにも当てはまらない
 ];
 
 /**
- * ヘッダー（冒頭1行）の型。投稿プロンプトの「▼ヘッダー」に載っている分類。
- * 実測で上位は共感課題型・状況名指し型が強いとされている。
+ * 分類方式の世代。
+ * v1（角度あり・7分類のヘッダー型）で記録した投稿は名称の対応が取れないため、
+ * 遡って付け直さず**分析対象から外す**（追加要件v1.2 1.5）。
  */
-export const HEADER_TYPES = ['共感課題型', '状況名指し型', '数字型', '感情語型', '対象者明示型', 'セール速報型'];
+export const LABEL_VERSION = 'v2';
+
+/** 「判定不可」も選択済みとして扱う。空欄だけを未選択とする */
+export function isLabeled(headerType) {
+  return HEADER_TYPES.includes(headerType);
+}
 
 /** 選定基準。プロンプトの「ネットで食品を買う動機は3つ」に対応する */
 export const CRITERIA = ['スーパーにない', '評価が高い', '今だけ安い'];
@@ -61,11 +76,13 @@ export function extractPostFeatures(text) {
   const lineLengths = filled.map((l) => charLength(l));
   const totalLength = lineLengths.reduce((sum, n) => sum + n, 0);
   const bulletLines = filled.filter((l) => BULLET_MARKS.test(l)).length;
+  // 1.4: 先頭の空行やタグ行を拾わないよう、本文の最初の中身のある行を使う
+  const header = headerLine(text);
 
   return {
     /** ヘッダー（1行目）の文字数。フィードで見えるのはここだけ */
-    headerLength: charLength(filled[0] ?? ''),
-    headerText: filled[0] ?? '',
+    headerLength: charLength(header),
+    headerText: header,
     /** ハッシュタグを除いた本文の文字数 */
     bodyLength: totalLength,
     /** ハッシュタグ込みの全体。ROOMの上限500文字はこちらで見る */

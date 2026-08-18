@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
-  ANGLES,
+  LABEL_VERSION,
+  isLabeled,
   CRITERIA,
   HEADER_TYPES,
   extractPostFeatures,
@@ -119,16 +120,24 @@ describe('文字数帯の区切り（投稿プロンプトの実測値）', () =
 });
 
 describe('分類の選択肢（投稿プロンプトに載っているもの）', () => {
-  it('角度は7種', () => {
-    assert.equal(ANGLES.length, 7);
-    for (const a of ['スーパーにない型', '評判の裏取り型', 'セール速報型', 'ギフト型']) {
-      assert.ok(ANGLES.includes(a), `${a} が無い`);
-    }
+  it('ヘッダー型は4分類＋判定不可の5つだけ（追加要件v1.2 1.2）', () => {
+    assert.deepEqual(HEADER_TYPES, ['共感課題型', 'お得条件型', '称号実績型', '商品特徴型', '判定不可']);
   });
 
-  it('ヘッダー型に共感課題型と状況名指し型が入っている（実測で上位に多い）', () => {
-    assert.ok(HEADER_TYPES.includes('共感課題型'));
-    assert.ok(HEADER_TYPES.includes('状況名指し型'));
+  it('「判定不可」が選べる。無いと「近いものを選ぶ」運用になり偽のデータが溜まる', () => {
+    assert.ok(HEADER_TYPES.includes('判定不可'));
+    assert.equal(isLabeled('判定不可'), true);
+  });
+
+  it('廃止した旧分類は選択済みとして扱わない', () => {
+    for (const old of ['状況名指し型', '数字型', '感情語型', '対象者明示型', 'セール速報型']) {
+      assert.equal(isLabeled(old), false, `${old} が残っている`);
+    }
+    assert.equal(isLabeled(null), false);
+  });
+
+  it('分類方式はv2', () => {
+    assert.equal(LABEL_VERSION, 'v2');
   });
 
   it('選定基準は3つ', () => {

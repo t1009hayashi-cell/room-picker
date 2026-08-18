@@ -20,7 +20,8 @@
 // v12: 投稿プロンプト最終版に対応・分析用の特徴記録・レビュー増加表示（2026-08-08）
 // v13: 下書き生成を廃止・カレンダーの重なり修正・分類欄を縦積みに（2026-08-08）
 // v14: カレンダーをGoogleカレンダー風に・CSVエクスポート追加（2026-08-18）
-const SHELL_VERSION = 'v14';
+// v15: 追加要件v1.2（分類を4分類に固定・購入済み・いいね数・タグ候補）（2026-08-18）
+const SHELL_VERSION = 'v15';
 const DATA_VERSION = 'v1';
 const SHELL_CACHE = `room-shell-${SHELL_VERSION}`;
 const DATA_CACHE = `room-data-${DATA_VERSION}`;
@@ -39,6 +40,8 @@ const SHELL_ASSETS = [
   './js/lib/genres.js',
   './js/lib/itemName.js',
   './js/lib/postFeatures.js',
+  './js/lib/tagSuggest.js',
+  './js/lib/modal.js',
   './js/lib/catalog.js',
   './js/lib/commentText.js',
   './js/lib/prompt.js',

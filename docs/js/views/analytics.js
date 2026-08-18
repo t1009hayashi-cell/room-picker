@@ -13,7 +13,8 @@ import {
   MIN_SAMPLE,
   buildRateSuggestions,
   buildThresholdSuggestions,
-  byAngle,
+  byPurchased,
+  labeledPosts,
   byFirstLineBand,
   byGenre,
   byHourBand,
@@ -38,18 +39,28 @@ let period = 90;
 const UNMATCHED_PAGE = 50;
 let unmatchedVisible = UNMATCHED_PAGE;
 
-function summaryTable(rows, { label }) {
+/**
+ * 集計表。`likes` を立てると平均いいね数の列を足す。
+ *
+ * いいね数は成果データより早く手に入る（成果は買われるまで出ない）ので、
+ * 反応の当たり外れを先に見るための指標として置く（追加要件v1.2 2.3）。
+ */
+function summaryTable(rows, { label, likes = false }) {
   if (rows.length === 0) return '<p class="empty">データがありません。</p>';
   const body = rows
     .map((row) => {
       const cells = row.enoughSample
         ? `<td>${fmtPercent(row.conversionRate, 1)}</td><td>${fmtYen(row.rewardPerPost)}</td>`
         : `<td colspan="2" class="muted">データ不足（${row.posts}/${MIN_SAMPLE}件）</td>`;
-      return `<tr><td>${escapeHtml(row.key)}</td><td>${row.posts}</td><td>${row.convertedPosts}</td>${cells}<td>${fmtYen(row.reward)}</td></tr>`;
+      // 未記録を0として平均すると実態より低く出るため、記録した件数も併記する
+      const likeCell = likes
+        ? `<td>${row.averageLikes === null ? '<span class="muted">未記録</span>' : `${fmtNum(Math.round(row.averageLikes))}<span class="muted small">（${row.likedPosts}件）</span>`}</td>`
+        : '';
+      return `<tr><td>${escapeHtml(row.key)}</td><td>${row.posts}</td>${likeCell}<td>${row.convertedPosts}</td>${cells}<td>${fmtYen(row.reward)}</td></tr>`;
     })
     .join('');
   return `<div class="table-wrap"><table>
-    <thead><tr><th>${label}</th><th>投稿数</th><th>成約</th><th>成約率</th><th>1投稿あたり</th><th>報酬計</th></tr></thead>
+    <thead><tr><th>${label}</th><th>投稿数</th>${likes ? '<th>平均いいね</th>' : ''}<th>成約</th><th>成約率</th><th>1投稿あたり</th><th>報酬計</th></tr></thead>
     <tbody>${body}</tbody></table></div>`;
 }
 
@@ -86,6 +97,13 @@ export async function renderAnalytics(root) {
   const comparison = rateComparison(posts, byPostId);
   // 破棄率はジャンル別バケットが持っているので、乖離テーブルに突き合わせて表示する（仕様書 10.4 層3）
   const genreRows = byGenre(posts, byPostId);
+  // 1.5: 分類方式v1の投稿は名称の対応が取れないので、分類の層からは外す
+  const labeled = labeledPosts(posts);
+  const labeledNote =
+    labeled.length >= MIN_SAMPLE
+      ? ''
+      : `<div class="warnbar">分類方式v2の投稿が${fmtNum(labeled.length)}件です。
+          ${MIN_SAMPLE}件たまるまで成約率と1投稿あたりの数値は出しません（少ない件数では判断を誤るため）。</div>`;
 
   const genreRates = {};
   for (const dateKey of app.loadedDates) {
@@ -118,20 +136,26 @@ export async function renderAnalytics(root) {
         : ''
     }
 
-    <h2>角度別（最重要）</h2>
-    ${summaryTable(byAngle(posts, byPostId), { label: '角度' })}
-
-    <h2>ヘッダー型別</h2>
+    <h2>ヘッダー型別（最重要）</h2>
     <p class="small muted" style="margin:0 0 6px">
-      投稿時に選んだ冒頭1行の型。プロンプトの実測では共感課題型・状況名指し型が上位に多いとされています。
+      投稿時に選んだ冒頭1行の型。<strong>分類方式v2で記録した${fmtNum(labeled.length)}件</strong>だけで集計しています。
+      それ以前は角度との2軸で名称も違い、対応が取れないため混ぜていません。
     </p>
-    ${summaryTable(byHeaderType(posts, byPostId), { label: 'ヘッダー型' })}
+    ${labeledNote}
+    ${summaryTable(byHeaderType(labeled, byPostId), { label: 'ヘッダー型', likes: true })}
+
+    <h2>購入済みかどうか</h2>
+    <p class="small muted" style="margin:0 0 6px">
+      購入した商品は一人称の体験談とオリジナル写真が使えます。
+      買う価値があるかをここの差で判断してください。
+    </p>
+    ${summaryTable(byPurchased(labeled, byPostId), { label: '購入', likes: true })}
 
     <h2>選定基準別</h2>
     <p class="small muted" style="margin:0 0 6px">
       1つの投稿が複数の基準に当てはまるため、基準ごとに同じ投稿を数えています。合計は投稿数と一致しません。
     </p>
-    ${summaryTable(byCriteria(posts, byPostId), { label: '基準' })}
+    ${summaryTable(byCriteria(labeled, byPostId), { label: '基準' })}
 
     <h2>ヘッダーの文字数帯</h2>
     ${summaryTable(byFirstLineBand(posts, byPostId), { label: '文字数' })}

@@ -24,6 +24,13 @@ export function toCsv(rows, columns) {
 
 const yesNo = (v) => (v ? 'あり' : 'なし');
 
+/** 直近に測ったいいね数。履歴で持っているので最新の1件を取る */
+function latestLike(post) {
+  const likes = Array.isArray(post?.likes) ? post.likes : [];
+  if (likes.length === 0) return null;
+  return likes.reduce((a, b) => (String(b.measuredAt) >= String(a.measuredAt) ? b : a));
+}
+
 /**
  * 投稿ログの列。
  * 分析用に記録している特徴（`features`）も1列ずつ出す。
@@ -44,8 +51,13 @@ export const POST_COLUMNS = [
   { label: '順位変動', value: (p) => p.rankChangeAtPost ?? '' },
   // 投稿前に手で選んだ分類
   { label: 'ヘッダー型', value: (p) => p.headerType ?? '' },
-  { label: '角度', value: (p) => p.angle ?? '' },
   { label: '選定基準', value: (p) => (p.criteria ?? []).join('／') },
+  // v1（角度あり・7分類）とv2（4分類）は名称の対応が取れない。混ぜて集計しないための印
+  { label: '分類方式', value: (p) => p.labelVersion ?? 'v1' },
+  { label: '購入済み', value: (p) => yesNo(p.purchased) },
+  { label: 'いいね数', value: (p) => latestLike(p)?.count ?? '' },
+  { label: 'いいね計測日', value: (p) => String(latestLike(p)?.measuredAt ?? '').slice(0, 10) },
+  { label: 'いいね記録回数', value: (p) => (p.likes ?? []).length },
   { label: 'セール期間中', value: (p) => yesNo(p.duringSale) },
   // 実際に投稿した文章から測った特徴
   { label: 'ヘッダー文字数', value: (p) => p.features?.headerLength ?? p.firstLineLength ?? '' },

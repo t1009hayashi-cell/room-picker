@@ -36,6 +36,54 @@
       "genreName": "精肉・肉加工品",
       "commissionRate": 0.04,
       "enabled": true
+    },
+    {
+      "genreId": "100246",
+      "genreName": "フルーツ・果物",
+      "commissionRate": 0.04,
+      "enabled": true
+    },
+    {
+      "genreId": "410853",
+      "genreName": "ドライフルーツ",
+      "commissionRate": 0.04,
+      "enabled": true
+    },
+    {
+      "genreId": "100262",
+      "genreName": "チーズ・乳製品",
+      "commissionRate": 0.04,
+      "enabled": true
+    },
+    {
+      "genreId": "101769",
+      "genreName": "その他",
+      "commissionRate": 0.04,
+      "enabled": true
+    },
+    {
+      "genreId": "100300",
+      "genreName": "調味料",
+      "commissionRate": 0.04,
+      "enabled": true
+    },
+    {
+      "genreId": "100250",
+      "genreName": "漬物・梅干し・キムチ",
+      "commissionRate": 0.04,
+      "enabled": true
+    },
+    {
+      "genreId": "100236",
+      "genreName": "魚介類・水産加工品",
+      "commissionRate": 0.04,
+      "enabled": true
+    },
+    {
+      "genreId": "100256",
+      "genreName": "麺類",
+      "commissionRate": 0.04,
+      "enabled": true
     }
   ]
 }

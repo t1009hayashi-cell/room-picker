@@ -34,8 +34,14 @@ export function calcHotScore(item: ScoreInput, scoring: ScoringConfig): number {
 
   score += Math.min(item.reviewCount / c.reviewDivisor, c.reviewCap);
 
-  if (item.itemPrice >= c.priceSweetSpotMin && item.itemPrice <= c.priceSweetSpotMax) {
-    score += c.priceSweetSpotBonus;
+  // 追加要件v1.3 2.3。旧実装は「5,000〜25,000円で+15」で、
+  // リーチ枠（1,000〜3,000円）が加点対象外だった。価格帯ごとに分ける。
+  // 比率そのものはプール分割で担保するので、ここは各プール内の順序にしか効かない
+  const t = scoring.priceTier;
+  if (item.itemPrice >= t.reachMin && item.itemPrice <= t.reachMax) {
+    score += c.reachPriceBonus;
+  } else if (item.itemPrice > t.reachMax && item.itemPrice <= c.revenuePriceMax) {
+    score += c.revenuePriceBonus;
   }
 
   if (item.isRateBoosted) score += c.rateBoostedBonus;

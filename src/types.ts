@@ -62,7 +62,41 @@ export interface RakutenRawResponse {
   items?: RakutenRawItem[];
 }
 
-export type ItemSource = 'ranking' | 'search';
+/** 'manual' は候補一覧に出てこない商品をユーザーが手で足したもの（追加要件v1.3 5章） */
+export type ItemSource = 'ranking' | 'search' | 'manual';
+
+/** 価格帯（追加要件v1.3 2章）。reach=リーチ枠（1,000〜3,000円）/ revenue=収益枠 */
+export type PriceTier = 'reach' | 'revenue';
+
+export type CriterionName = 'スーパーにない' | '評価が高い' | '今だけ安い';
+
+/**
+ * 判定の確からしさ。
+ * 確定=API値による判定 / 推定=商品名からの推定（スーパー判定） / 手動=ユーザーが上書きした
+ */
+export type CriterionConfidence = '確定' | '推定' | '手動';
+
+export interface CriterionResult {
+  matched: boolean;
+  /** AIが理由を理解するための文字列。**投稿文にそのまま転記しないこと** */
+  reason: string | null;
+  confidence: CriterionConfidence;
+}
+
+export type CriteriaDetail = Record<CriterionName, CriterionResult>;
+
+/** 「スーパーにない」の代理指標（追加要件v1.3 4章）。運用しながら調整するため外出しする */
+export interface SupermarketRules {
+  quantity: {
+    thresholds: { unit: string; pattern: string; min: number }[];
+  };
+  keywords: {
+    processed: string[];
+    bulk: string[];
+    specialty: string[];
+    frozen: string[];
+  };
+}
 
 export type ExcludeReasonCode =
   | 'price_below_min'
@@ -190,6 +224,12 @@ export interface NormalizedItem {
    */
   newcomerExempt: boolean;
 
+  /** 価格帯（追加要件v1.3 2章）。一覧の配分をここで決める */
+  priceTier: PriceTier;
+  /** 当てはまった選定基準。空の商品は候補に出さない（3.2） */
+  matchedCriteria: CriterionName[];
+  /** 判定の根拠。投稿文にそのまま転記しないこと */
+  criteriaDetail: CriteriaDetail;
 }
 
 export interface GenreSnapshot {
@@ -275,14 +315,22 @@ export interface ScoringConfig {
     roomRankBonusCap: number;
     rateBoostThreshold: number;
   };
+  /** 価格帯の境目と出力比率（追加要件v1.3 2章） */
+  priceTier: {
+    reachMin: number;
+    reachMax: number;
+    /** 出力に占めるリーチ枠の割合。運用方針が変わったときコードを触らず調整するための設定値 */
+    reachRatio: number;
+  };
   hotScore: {
     rankGainPerRank: number;
     newEntryBonus: number;
     reviewDivisor: number;
     reviewCap: number;
-    priceSweetSpotMin: number;
-    priceSweetSpotMax: number;
-    priceSweetSpotBonus: number;
+    /** リーチ枠（1,000〜3,000円）の加点。旧実装ではここが加点対象外だった */
+    reachPriceBonus: number;
+    revenuePriceMax: number;
+    revenuePriceBonus: number;
     rateBoostedBonus: number;
     pointRateCap: number;
   };

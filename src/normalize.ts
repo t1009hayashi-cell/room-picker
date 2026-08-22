@@ -24,6 +24,10 @@ export type NormalizedBase = Omit<
   | 'excludeReason'
   | 'excludeReasons'
   | 'newcomerExempt'
+  // 選定基準の判定は除外判定のあと（新着ブーストの結果を使う）なので enrich 側で埋める
+  | 'priceTier'
+  | 'matchedCriteria'
+  | 'criteriaDetail'
 >;
 
 export interface NormalizeContext {

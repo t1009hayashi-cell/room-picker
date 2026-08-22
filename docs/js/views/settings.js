@@ -165,6 +165,16 @@ export async function renderSettings(root) {
         <span>レビュー平均の下限（0で無効）</span>
         <input type="number" min="0" max="5" step="0.1" value="${s.minReviewAverage ?? 0}" data-setting="minReviewAverage" />
       </label>
+      <label class="field">
+        <span>リーチ枠の割合（0〜1）</span>
+        <input type="number" min="0" max="1" step="0.05" value="${s.reachRatio ?? 0.7}" data-setting="reachRatio" />
+      </label>
+      <p class="small muted" style="margin:0 0 10px">
+        「おすすめ順」に占める <strong>1,000〜3,000円の商品の割合</strong>です（既定 0.7）。
+        割引率の加点は高単価商品ほど効くため、放っておくと高単価に偏ります。
+        比率を並び順の構造で担保するための設定です。
+        <strong>リーチ枠が本当に有利かはまだ実証されていません。</strong>検証しながら調整してください。
+      </p>
       <p class="small muted" style="margin:0 0 10px">
         件数が多くても評価が低い商品は、実際に不満が出ているサインとして外します。
         候補が減りすぎたら 4.2 や 4.0 まで下げてください。

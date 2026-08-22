@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import type { GenreConfig, NgWordsConfig, ScoringConfig } from './types.js';
+import type { GenreConfig, NgWordsConfig, ScoringConfig, SupermarketRules } from './types.js';
 
 /** dist/src/config.js から見たリポジトリルート */
 export const REPO_ROOT = path.resolve(fileURLToPath(new URL('.', import.meta.url)), '..', '..');
@@ -19,18 +19,21 @@ export interface AppConfig {
   genres: GenreConfig[];
   ngWords: NgWordsConfig;
   scoring: ScoringConfig;
+  /** 「スーパーにない」の代理指標（追加要件v1.3 4章）。運用しながら調整する前提で外出し */
+  supermarketRules: SupermarketRules;
 }
 
 export async function loadConfig(configDir: string = CONFIG_DIR): Promise<AppConfig> {
-  const [genresFile, ngWords, scoring] = await Promise.all([
+  const [genresFile, ngWords, scoring, supermarketRules] = await Promise.all([
     readJson<{ genres: GenreConfig[] }>(path.join(configDir, 'genres.json')),
     readJson<NgWordsConfig>(path.join(configDir, 'ng-words.json')),
     readJson<ScoringConfig>(path.join(configDir, 'scoring.json')),
+    readJson<SupermarketRules>(path.join(configDir, 'supermarket-rules.json')),
   ]);
 
   const genres = genresFile.genres.filter((g) => g.enabled !== false);
   if (genres.length === 0) {
     throw new Error('config/genres.json に有効なジャンルが1件もありません');
   }
-  return { genres, ngWords, scoring };
+  return { genres, ngWords, scoring, supermarketRules };
 }

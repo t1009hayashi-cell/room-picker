@@ -192,26 +192,37 @@ describe('hotScore（仕様書 6.3）', () => {
 
   it('順位上昇・レビュー・価格帯・ポイント倍率を加算する', async () => {
     const { scoring } = await config();
-    // (14-10)*5=20 + min(43.088,20)=20 + 価格15 + ポイント10 = 65
-    assert.equal(calcHotScore(base, scoring), 65);
+    // (14-10)*5=20 + min(43.088,20)=20 + 収益枠10 + ポイント10 = 60
+    assert.equal(calcHotScore(base, scoring), 60);
+  });
+
+  it('リーチ枠（1,000〜3,000円）のほうが価格加点が大きい（追加要件v1.3 2.3）', async () => {
+    const { scoring } = await config();
+    // 旧実装は「5,000〜25,000円で+15」で、リーチ枠は加点対象外だった
+    const reach = calcHotScore({ ...base, itemPrice: 1580 }, scoring);
+    const revenue = calcHotScore({ ...base, itemPrice: 5398 }, scoring);
+    assert.equal(reach - revenue, 5);
+    // 25,000円を超えると価格加点は付かない
+    const tooHigh = calcHotScore({ ...base, itemPrice: 30000 }, scoring);
+    assert.equal(revenue - tooHigh, 10);
   });
 
   it('新規ランクインは +30', async () => {
     const { scoring } = await config();
     const withPrev = calcHotScore({ ...base, prevRank: null, isNew: true }, scoring);
-    assert.equal(withPrev, 30 + 20 + 15 + 10);
+    assert.equal(withPrev, 30 + 20 + 10 + 10);
   });
 
   it('前日スナップショットが無い初回実行では上昇幅ボーナスを付けない（仕様書 6.4）', async () => {
     const { scoring } = await config();
     const first = calcHotScore({ ...base, prevRank: null, isNew: true, hasPrevSnapshot: false }, scoring);
-    assert.equal(first, 20 + 15 + 10);
+    assert.equal(first, 20 + 10 + 10);
   });
 
   it('検索API由来は上昇幅の項を0にする', async () => {
     const { scoring } = await config();
     const s = calcHotScore({ ...base, source: 'search', rank: null, prevRank: null }, scoring);
-    assert.equal(s, 20 + 15 + 10);
+    assert.equal(s, 20 + 10 + 10);
   });
 
   it('料率アップ商品は +40', async () => {
@@ -221,7 +232,7 @@ describe('hotScore（仕様書 6.3）', () => {
 
   it('順位が下がるとマイナスになる', async () => {
     const { scoring } = await config();
-    assert.equal(calcHotScore({ ...base, rank: 20, prevRank: 10 }, scoring), -50 + 20 + 15 + 10);
+    assert.equal(calcHotScore({ ...base, rank: 20, prevRank: 10 }, scoring), -50 + 20 + 10 + 10);
   });
 });
 
@@ -258,20 +269,33 @@ describe('filter（仕様書 6.1）', () => {
     );
     assert.equal(r.excludeReasons.includes('price_below_min'), false);
 
-    const low = evaluateExclusion({ ...ok, itemPrice: 1000, itemPriceMax: 1000 }, scoring, ngWords, earliest);
+    // 追加要件v1.3 0章で下限は1,000円。ちょうど1,000円は通す
+    const atMin = evaluateExclusion({ ...ok, itemPrice: 1000, itemPriceMax: 1000 }, scoring, ngWords, earliest);
+    assert.equal(atMin.excludeReasons.includes('price_below_min'), false);
+
+    const low = evaluateExclusion({ ...ok, itemPrice: 980, itemPriceMax: 980 }, scoring, ngWords, earliest);
     assert.equal(low.excludeReasons.includes('price_below_min'), true);
   });
 
   it('価格帯でない商品は表示価格（itemPrice）で足切りする', async () => {
     const { scoring, ngWords } = await config();
-    // itemPrice 2900 / itemPriceMax 3200 の食い違い商品。表示価格が閾値未満なので除外する
+    // itemPrice 900 / itemPriceMax 3200 の食い違い商品。表示価格が閾値未満なので除外する
     const r = evaluateExclusion(
-      { ...ok, hasPriceRange: false, itemPrice: 2900, itemPriceMax: 3200 },
+      { ...ok, hasPriceRange: false, itemPrice: 900, itemPriceMax: 3200 },
       scoring,
       ngWords,
       earliest,
     );
     assert.equal(r.excludeReasons.includes('price_below_min'), true);
+  });
+
+  it('リーチ枠（1,000〜3,000円）が価格で落ちない（追加要件v1.3 0章）', async () => {
+    const { scoring, ngWords } = await config();
+    // 下限3,000円のままだと、プロンプトが主力と定めるリーチ枠が機械的に全滅していた
+    for (const price of [1180, 1580, 2980]) {
+      const r = evaluateExclusion({ ...ok, itemPrice: price, itemPriceMax: price }, scoring, ngWords, earliest);
+      assert.equal(r.excludeReasons.includes('price_below_min'), false, `${price}円が落ちている`);
+    }
   });
 
   it('postageFlag は 1（送料別）を除外する。0（送料込み）は残す', async () => {

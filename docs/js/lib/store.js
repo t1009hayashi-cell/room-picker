@@ -26,7 +26,8 @@ export function dayItemKey(dateKey, itemCode) {
 }
 
 export const DEFAULT_SETTINGS = {
-  minPrice: 3000,
+  // 追加要件v1.3 0章: 3,000のままだとリーチ枠（1,000〜3,000円）が丸ごと落ちる
+  minPrice: 1000,
   // 追加要件1章: 500だと定番商品しか残らず顔ぶれが固定化するため200に下げ、
   // 実質の品質判定はレビュー平均で行う
   minReview: 200,
@@ -37,6 +38,12 @@ export const DEFAULT_SETTINGS = {
   /** カレンダー集計で読み込む日次JSONの最大日数。回線負荷とのトレードオフ */
   calendarWindowDays: 31,
   genreEnabled: {},
+  /**
+   * おすすめ順に占めるリーチ枠（1,000〜3,000円）の割合（追加要件v1.3 2.4）。
+   * **リーチ枠が本当に有利かはまだ実証されていない**（2026/8/19時点の実測では逆の結果）。
+   * 検証結果で方針を変える前提なので、コードではなく設定値にしてある。
+   */
+  reachRatio: 0.7,
 };
 
 function emptyState() {
@@ -64,6 +71,16 @@ function emptyState() {
      * AIへの指示とタグの促しが変わる。買う価値があるかを数字で見るための層でもある。
      */
     purchased: {},
+    /**
+     * 「スーパーにない」の手動上書き（itemCode -> true/false）。追加要件v1.3 4.3。
+     * 自動判定は商品名からの推定なので誤判定が必ず起きる。人の判断を上に置く。
+     */
+    criteriaOverride: {},
+    /**
+     * 手動で足した商品（追加要件v1.3 5章）。候補一覧に出てこない商品を投稿したとき、
+     * 記録が残らないと分析から漏れる（投稿の全件が揃わないと比率も平均も出せない）。
+     */
+    manualItems: [],
     /** AI用プロンプトをコピーした商品。投稿ログの usedAiGeneration に使う */
     aiCopied: {},
     posts: [],
@@ -122,7 +139,7 @@ function migrateReserved(rawReserved) {
 }
 
 /** 設定の世代。追加要件v1.1で既定値が変わったため、保存済みの設定を1度だけ移行する */
-const SETTINGS_VERSION = 2;
+const SETTINGS_VERSION = 3;
 
 /**
  * 既定値の変更を保存済みの設定に反映する。
@@ -138,6 +155,9 @@ function migrateSettings(settings, meta) {
   // 旧既定値 500 のままなら新既定値 200 にする
   if (next.minReview === 500) next.minReview = 200;
   if (typeof next.minReviewAverage !== 'number') next.minReviewAverage = 4.3;
+  // v1.3 0章: 下限3,000円はリーチ枠を機械的に落としていた。旧既定値のままなら1,000にする
+  if (next.minPrice === 3000) next.minPrice = 1000;
+  if (typeof next.reachRatio !== 'number') next.reachRatio = 0.7;
   return next;
 }
 
@@ -178,6 +198,8 @@ function migrate(raw) {
     reserved: migrateReserved(raw.reserved),
     postLabels: migrateLabels(raw.postLabels),
     purchased: raw.purchased ?? {},
+    criteriaOverride: raw.criteriaOverride ?? {},
+    manualItems: Array.isArray(raw.manualItems) ? raw.manualItems : [],
     aiCopied: raw.aiCopied ?? {},
     // 分類方式v1（角度あり・7分類）で記録した投稿は名称の対応が取れない。
     // 遡って付け直さず、分析側で外せるように印だけ付ける（追加要件v1.2 1.5）
@@ -352,6 +374,37 @@ export function addLikeCount(postId, count, measuredAt = new Date().toISOString(
     if (!post) return;
     if (!Array.isArray(post.likes)) post.likes = [];
     post.likes.push({ count, measuredAt });
+  });
+}
+
+/**
+ * 「スーパーにない」を手で on/off する（追加要件v1.3 4.3）。
+ * 自動判定は商品名からの推定なので、誤判定は必ず起きる。人の判断を上書きとして残す。
+ */
+export function setCriteriaOverride(itemCode, on) {
+  update((s) => {
+    if (on === null) delete s.criteriaOverride[itemCode];
+    else s.criteriaOverride[itemCode] = on;
+  });
+}
+
+export function getCriteriaOverride(itemCode) {
+  const v = state.criteriaOverride?.[itemCode];
+  return v === undefined ? null : v;
+}
+
+/** 手動で足した商品を保存する（追加要件v1.3 5章） */
+export function addManualItem(item) {
+  update((s) => {
+    const i = s.manualItems.findIndex((m) => m.itemCode === item.itemCode);
+    if (i >= 0) s.manualItems[i] = { ...s.manualItems[i], ...item };
+    else s.manualItems.push(item);
+  });
+}
+
+export function removeManualItem(itemCode) {
+  update((s) => {
+    s.manualItems = s.manualItems.filter((m) => m.itemCode !== itemCode);
   });
 }
 

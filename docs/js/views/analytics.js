@@ -13,7 +13,9 @@ import {
   MIN_SAMPLE,
   buildRateSuggestions,
   buildThresholdSuggestions,
+  byPriceTier,
   byPurchased,
+  excludeManualPosts,
   latestLikeCount,
   labeledPosts,
   byFirstLineBand,
@@ -36,6 +38,8 @@ import {
 import { escapeHtml, fmtDateTime, fmtNum, fmtPercent, fmtYen } from '../lib/format.js';
 
 let period = 90;
+/** 手動追加した投稿を集計から外すか（追加要件v1.3 5.5） */
+let excludeManual = false;
 /** 未突合はすべて手動で紐付けられる必要があるため、打ち切らずに追加表示できるようにする（仕様書 10.3） */
 const UNMATCHED_PAGE = 50;
 let unmatchedVisible = UNMATCHED_PAGE;
@@ -99,7 +103,10 @@ export async function renderAnalytics(root) {
   // 破棄率はジャンル別バケットが持っているので、乖離テーブルに突き合わせて表示する（仕様書 10.4 層3）
   const genreRows = byGenre(posts, byPostId);
   // 1.5: 分類方式v1の投稿は名称の対応が取れないので、分類の層からは外す
-  const labeled = labeledPosts(posts);
+  const manualCount = posts.filter((p) => (p.itemSource ?? 'ranking') === 'manual').length;
+  // 5.5: 手動追加分はデータの質が違うので、選定ロジックを見るときは外せるようにする
+  const scoped = excludeManual ? excludeManualPosts(posts) : posts;
+  const labeled = labeledPosts(scoped);
   // いいね数は成果より早く手に入る指標なので、入れ忘れを分析画面の入口で気づかせる
   const unrecordedLikes = state.posts.filter((p) => latestLikeCount(p) === null).length;
   const labeledNote =
@@ -138,6 +145,22 @@ export async function renderAnalytics(root) {
         ? '<div class="warnbar">成果データがありません。設定画面から注文明細レポートのCSVを取り込んでください（ダウンロードはPCからのみ可能です）。</div>'
         : ''
     }
+
+    ${
+      manualCount === 0
+        ? ''
+        : `<div class="chips" role="group" aria-label="手動追加の扱い">
+            <button class="chip" data-manual="0" aria-pressed="${!excludeManual}">手動追加を含む（${fmtNum(manualCount)}件）</button>
+            <button class="chip" data-manual="1" aria-pressed="${excludeManual}">手動追加を除く</button>
+          </div>`
+    }
+
+    <h2>価格帯別</h2>
+    <p class="small muted" style="margin:0 0 6px">
+      リーチ枠（1,000〜3,000円）はいいね・フォロワー獲得、収益枠（3,000円超）は報酬が目的です。
+      <strong>どちらが有利かはまだ実証されていません。</strong>設定の「リーチ枠の割合」で配分を変えられます。
+    </p>
+    ${summaryTable(byPriceTier(scoped, byPostId), { label: '価格帯', likes: true })}
 
     <div class="card">
       <div class="spread">
@@ -283,6 +306,13 @@ export async function renderAnalytics(root) {
 }
 
 function bind(root) {
+  root.querySelectorAll('[data-manual]').forEach((el) => {
+    el.addEventListener('click', () => {
+      excludeManual = el.dataset.manual === '1';
+      renderAnalytics(root);
+    });
+  });
+
   root.querySelectorAll('[data-period]').forEach((el) => {
     el.addEventListener('click', () => {
       period = Number(el.dataset.period);

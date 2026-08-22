@@ -9,7 +9,10 @@ import { copyToClipboard } from '../lib/prompt.js';
 import { isDuringSale } from '../lib/schedule.js';
 import { headerLine, measureComment, splitComment } from '../lib/commentText.js';
 import { toSearchQuery } from '../lib/itemName.js';
-import { chooseOne } from '../lib/modal.js';
+import { chooseOne, confirmAction } from '../lib/modal.js';
+import { buildPools, priceTierOf } from '../lib/pools.js';
+import { buildManualItem, parseItemUrl } from '../lib/manualItem.js';
+import { roomUrlFor } from '../lib/room.js';
 import { ORIGINAL_PHOTO_TAG, suggestTags, tagLine } from '../lib/tagSuggest.js';
 import { CRITERIA, HEADER_TYPES, LABEL_VERSION, extractPostFeatures } from '../lib/postFeatures.js';
 import * as store from '../lib/store.js';
@@ -98,11 +101,31 @@ function genreChoices(items) {
   return list;
 }
 
-function sortItems(items) {
+/**
+ * 並び替え。
+ *
+ * **「おすすめ順」だけは価格帯で組み直す**（追加要件v1.3 2章）。
+ * スコア降順に素直に並べると、割引率の加点が大きい高単価商品ばかりが上に来る。
+ * リーチ枠（1,000〜3,000円）とのの比率を「出力の構造」で担保するため、
+ * プールを分けて交互に取り出す。他の並び順は指定どおりの単純なソートのままにする
+ * （「割引率順」を価格帯で崩すと、何を見ているのか分からなくなるため）。
+ */
+function sortItems(items, reachRatio) {
   const sort = SORTS.find((s) => s.id === sortId) ?? SORTS[0];
   const tieBreak = (a, b) => b.hotScore - a.hotScore || a.itemCode.localeCompare(b.itemCode);
+
+  // 手動で足した商品はスコアを持たない（0点）ため、素直に並べると最後尾に沈んで
+  // 「追加したのに出てこない」状態になる。**ユーザーが意図して選んだものなので必ず先頭に置く。**
+  const manual = items.filter((i) => i.source === 'manual');
+  const rest = items.filter((i) => i.source !== 'manual');
+
   // 元の配列はカタログが持っているものなので壊さない
-  return [...items].sort((a, b) => sort.compare(a, b) || tieBreak(a, b));
+  const sorted = [...rest].sort((a, b) => sort.compare(a, b) || tieBreak(a, b));
+  if (sortId !== 'deal') {
+    return { items: [...manual, ...sorted], reachShort: false, reachCount: 0, revenueCount: 0 };
+  }
+  const pooled = buildPools(sorted, { reachRatio });
+  return { ...pooled, items: [...manual, ...pooled.items] };
 }
 
 /**
@@ -117,11 +140,23 @@ let lastKey = null;
 function itemsForDate(dateKey) {
   const state = store.getState();
   const mode = state.settings.calendarMode;
-  if (mode === 'discovered') {
-    const all = app.catalog?.byDiscovered.get(dateKey) ?? [];
-    return showExcluded ? all : all.filter((item) => !item.userExcluded);
-  }
-  return app.catalog?.byScheduled.get(dateKey) ?? [];
+  const base =
+    mode === 'discovered'
+      ? (() => {
+          const all = app.catalog?.byDiscovered.get(dateKey) ?? [];
+          return showExcluded ? all : all.filter((item) => !item.userExcluded);
+        })()
+      : (app.catalog?.byScheduled.get(dateKey) ?? []);
+
+  // 手動追加した商品は除外条件に関係なく必ず出す（追加要件v1.3 5.3）。
+  // ユーザーが意図して選んだものなので、こちらの判断で上書きしない
+  const manual = (state.manualItems ?? [])
+    .filter((m) => m.dateKey === dateKey)
+    .map((m) => ({ ...m, scheduledDate: dateKey, scheduleReason: '手動追加', userExcluded: false, userExcludeReasons: [] }));
+  if (manual.length === 0) return base;
+
+  const codes = new Set(base.map((i) => i.itemCode));
+  return [...base, ...manual.filter((m) => !codes.has(m.itemCode))];
 }
 
 export async function renderDayList(root, dateKey) {
@@ -143,7 +178,11 @@ export async function renderDayList(root, dateKey) {
   // 商品ごとの投稿履歴。別の日に投稿済みかを判定して二重投稿を防ぐ
   const postedIndex = store.buildPostedItemIndex(state.posts);
 
-  const items = sortItems(applyGenre(applyStatus(applyChips(dayItems, activeChips), state, dateKey, postedIndex)));
+  const pooled = sortItems(
+    applyGenre(applyStatus(applyChips(dayItems, activeChips), state, dateKey, postedIndex)),
+    state.settings.reachRatio,
+  );
+  const items = pooled.items;
   const reservedCount = dayItems.filter((item) => state.reserved[store.dayItemKey(dateKey, item.itemCode)]).length;
   const otherDayPostedCount = dayItems.filter(
     (item) => store.postedOnOtherDays(postedIndex, item.itemCode, dateKey).length > 0,
@@ -189,14 +228,94 @@ export async function renderDayList(root, dateKey) {
         ? `<p class="small muted">この日の候補のうち <strong>${otherDayPostedCount}件</strong> は別の日にすでに投稿しています。「表示: 未投稿のみ」にすると隠せます。</p>`
         : ''
     }
+    ${poolNotice(pooled, state.settings.reachRatio)}
     ${shopConcentrationNotice(items)}
     <div id="day-items">
       ${items.length === 0 ? `<p class="empty">${emptyMessage()}</p>` : shown.map((item) => cardHtml(item, dateKey, state, postedIndex)).join('')}
     </div>
     ${rest > 0 ? `<button class="btn btn--block" data-more>さらに表示（残り${rest}件）</button>` : ''}
+
+    <button class="btn btn--block" data-action="add-manual">商品を手動で追加</button>
+    <p class="small muted" style="margin:4px 0 0">
+      候補一覧に出てこない商品を投稿するときに使います。
+      記録しておかないと分析から漏れます（投稿した全件が揃っていないと比率も平均も出せません）。
+    </p>
   `;
 
   bind(root, dateKey);
+}
+
+/**
+ * リーチ枠が足りないときの注意（追加要件v1.3 2.2 手順5）。
+ * 補充が起きたことを黙って隠すと、比率を守れていないことに気づけない。
+ */
+function poolNotice(pooled, reachRatio) {
+  if (sortId !== 'deal') return '';
+  if (!pooled.reachShort) return '';
+  const pct = Math.round((reachRatio ?? 0.7) * 100);
+  return `<div class="warnbar">
+    リーチ枠（1,000〜3,000円）の候補が不足しています（リーチ${pooled.reachCount}件 / 収益${pooled.revenueCount}件）。
+    ${pct}%に届かないぶんは収益枠で埋めています。
+    レビュー件数の条件が低単価商品で満たされにくい可能性があります。
+  </div>`;
+}
+
+/** 価格帯のバッジ。どちらの枠として選んだのかを一目で分かるようにする */
+function tierBadge(item) {
+  const tier = priceTierOf(item);
+  return tier === 'reach'
+    ? '<span class="badge badge--reach">リーチ枠</span>'
+    : '<span class="badge badge--revenue">収益枠</span>';
+}
+
+/**
+ * 選定理由（追加要件v1.3 3章）。
+ *
+ * **ここの文字列を投稿文にそのまま転記しないこと。**
+ * 「レビュー1,981件」のような数値の転記は既存の禁止事項に反する。
+ * AIが理由を理解するための材料として渡すもの。
+ */
+function criteriaHtml(item, state) {
+  const detail = item.criteriaDetail;
+  const override = state.criteriaOverride?.[item.itemCode];
+  if (!detail) {
+    return `<p class="small muted" style="margin:6px 0 0">
+      選定理由はこの日のデータには入っていません（追加要件v1.3より前に取得した分）。
+    </p>`;
+  }
+
+  const rows = CRITERIA.map((name) => {
+    const r = detail[name] ?? { matched: false, reason: null, confidence: '確定' };
+    // スーパー判定は推定なので、手動で上書きした結果を優先する
+    const matched = name === 'スーパーにない' && override !== undefined ? override : r.matched;
+    const confidence = name === 'スーパーにない' && override !== undefined ? '手動' : r.confidence;
+    return `<li class="criteria__row ${matched ? '' : 'criteria__row--off'}">
+      <span class="criteria__mark">${matched ? '✅' : '—'}</span>
+      <div class="criteria__body">
+        <span class="criteria__name">${escapeHtml(name)}</span>
+        ${matched ? `<span class="criteria__conf">${escapeHtml(confidence)}</span>` : ''}
+        <span class="criteria__reason small muted">${escapeHtml(matched ? (r.reason ?? '手動で該当にしました') : '該当なし')}</span>
+      </div>
+    </li>`;
+  }).join('');
+
+  return `<ul class="criteria">${rows}</ul>
+    <label class="postlabel__check" style="margin-top:4px">
+      <input type="checkbox" data-supermarket="${escapeHtml(item.itemCode)}" ${
+        (override !== undefined ? override : detail['スーパーにない']?.matched) ? 'checked' : ''
+      } />
+      「スーパーにない」に該当する（推定なので手で直せます）
+    </label>`;
+}
+
+/** 手動追加した商品の警告（追加要件v1.3 5.3）。除外はしないが理由は必ず見せる */
+function manualWarningHtml(item) {
+  if (item.source !== 'manual') return '';
+  const list = item.manualWarnings ?? [];
+  return `<div class="warnbar">
+    手動で追加した商品です（データは手入力のため、選定ロジックの検証には使いません）。
+    ${list.length === 0 ? '' : `<br>⚠ 通常の抽出条件では除外されます：${escapeHtml(list.join(' / '))}`}
+  </div>`;
 }
 
 /** ヘッダー型の説明。何を見て選ぶのかを1行で示す（判定は「投稿した1行目」だけで決まる） */
@@ -313,6 +432,7 @@ function cardHtml(item, dateKey, state, postedIndex) {
   const sameShopPosted = sameShopPostedOnDate(state.posts, item.shopName, todayKey(), item.itemCode);
 
   const rankBadge = (() => {
+    if (item.source === 'manual') return '<span class="badge badge--manual">手動</span>';
     if (item.source === 'search') return '<span class="badge">検索</span>';
     if (item.isNew) return '<span class="badge badge--new">NEW</span>';
     if (item.rank === null) return '';
@@ -391,7 +511,7 @@ function cardHtml(item, dateKey, state, postedIndex) {
       <div class="item__main">
         <p class="item__name" data-toggle-name>${escapeHtml(item.itemName)}</p>
         ${dealBadges ? `<div class="item__badges">${dealBadges}</div>` : ''}
-        <div class="item__badges">${badges}</div>
+        <div class="item__badges">${tierBadge(item)}${badges}</div>
         <div class="spread">
           <span class="item__price">
             ${
@@ -408,6 +528,17 @@ function cardHtml(item, dateKey, state, postedIndex) {
         </p>
       </div>
     </div>
+
+    ${manualWarningHtml(item)}
+
+    <details>
+      <summary>選定理由（${item.matchedCriteria?.length ?? 0}件該当）</summary>
+      ${criteriaHtml(item, state)}
+      <p class="small muted" style="margin:6px 0 0">
+        ここの文言は<strong>投稿文にそのまま書かないでください</strong>。
+        AIに理由を伝えるための材料です（レビュー件数の転記は禁止事項に当たります）。
+      </p>
+    </details>
 
     <details>
       <summary>商品説明</summary>
@@ -429,6 +560,7 @@ function cardHtml(item, dateKey, state, postedIndex) {
       <button class="btn" data-copy-name="${escapeHtml(item.itemCode)}">商品名をコピー</button>
       <button class="btn" data-copy-url="${escapeHtml(item.itemCode)}" ${item.itemUrl ? '' : 'disabled'}>URLをコピー</button>
       <a class="btn" href="${escapeHtml(item.itemUrl)}" target="_blank" rel="noopener noreferrer">楽天で開く</a>
+      <a class="btn" href="${escapeHtml(roomUrlFor(item))}" target="_blank" rel="noopener noreferrer" data-room="${escapeHtml(item.itemCode)}">ROOMに投稿</a>
       ${
         item.reviewUrl
           ? `<a class="btn" href="${escapeHtml(item.reviewUrl)}" target="_blank" rel="noopener noreferrer">レビューを読む</a>`
@@ -482,6 +614,89 @@ function likesHtml(dateKey, itemCode) {
     </div>
     ${history ? `<p class="small muted" style="margin:4px 0 0">${escapeHtml(history)}</p>` : ''}
   </div>`;
+}
+
+/**
+ * 商品を手動で足すフォーム（追加要件v1.3 5章）。
+ *
+ * **URLだけで楽天APIから引いてくることはできない。**
+ * アプリIDとアクセスキーは公開リポジトリに置けず、静的サイトから叩けば必ず露出する。
+ * そのため 5.4 の「最小限の手入力」を正の入口にしている。
+ * URLからは itemCode とショップコードだけを機械的に取り出す。
+ */
+function openManualDialog(root, dateKey) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal';
+  overlay.innerHTML = `
+    <div class="modal__panel" role="dialog" aria-modal="true" aria-label="商品を手動で追加">
+      <h3 class="modal__title">商品を手動で追加</h3>
+      <p class="small muted" style="margin:0 0 10px">
+        候補一覧に出てこない商品を投稿するときに使います。
+        <strong>投稿した全件が記録されていないと、比率も平均も出せません。</strong>
+      </p>
+      <label class="field"><span>楽天の商品URL（必須）</span>
+        <input type="url" inputmode="url" data-m="url" placeholder="https://item.rakuten.co.jp/…" /></label>
+      <label class="field"><span>商品名（必須）</span><input type="text" data-m="name" /></label>
+      <label class="field"><span>価格（必須・円）</span><input type="number" inputmode="numeric" min="0" data-m="price" /></label>
+      <label class="field"><span>ショップ名（必須）</span><input type="text" data-m="shop" /></label>
+      <label class="field"><span>レビュー件数（任意）</span><input type="number" inputmode="numeric" min="0" data-m="rc" /></label>
+      <label class="field"><span>レビュー平均（任意）</span><input type="number" inputmode="decimal" min="0" max="5" step="0.01" data-m="ra" /></label>
+      <p class="small muted" style="margin:0 0 10px">
+        手入力分は <code>手入力</code> の印が付き、選定ロジックの検証には使いません（データの質が違うため）。
+      </p>
+      <p class="hint" data-m="error" hidden></p>
+      <button class="btn btn--primary btn--block" data-m="save">追加する</button>
+      <button class="btn btn--ghost modal__cancel">やめる</button>
+    </div>
+  `;
+
+  const close = () => overlay.remove();
+  const val = (k) => overlay.querySelector(`[data-m="${k}"]`).value.trim();
+  const error = overlay.querySelector('[data-m="error"]');
+  const fail = (message) => {
+    error.textContent = message;
+    error.hidden = false;
+  };
+
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay || event.target.closest('.modal__cancel')) close();
+  });
+
+  overlay.querySelector('[data-m="save"]').addEventListener('click', () => {
+    const parsed = parseItemUrl(val('url'));
+    if (!parsed.ok) return fail(parsed.error);
+    if (val('name') === '') return fail('商品名を入れてください');
+    if (val('shop') === '') return fail('ショップ名を入れてください');
+    const price = Number(val('price'));
+    if (!Number.isFinite(price) || price <= 0) return fail('価格を数字で入れてください');
+
+    const settings = store.getState().settings;
+    const item = buildManualItem(
+      {
+        ...parsed,
+        itemName: val('name'),
+        itemPrice: price,
+        shopName: val('shop'),
+        reviewCount: val('rc'),
+        reviewAverage: val('ra'),
+        addedAt: nowJstIso(),
+      },
+      settings,
+    );
+    // 手動追加はその日の候補として持つ。日をまたいで一覧に出し続けないため
+    store.addManualItem({ ...item, dateKey });
+    close();
+    toast(
+      item.manualWarnings.length === 0
+        ? '追加しました'
+        : `追加しました。通常の抽出条件では除外される商品です（${item.manualWarnings.join(' / ')}）`,
+      item.manualWarnings.length === 0 ? 2200 : 4600,
+    );
+    renderDayList(root, dateKey);
+  });
+
+  document.body.appendChild(overlay);
+  overlay.querySelector('[data-m="url"]').focus();
 }
 
 function findItem(code) {
@@ -693,6 +908,9 @@ function bind(root, dateKey) {
         itemCode: item.itemCode,
         // 成果データとの突合キー。短縮・整形・トリムを一切行わない
         itemNameRaw: item.itemName,
+        // いいね一覧で「どの商品か」を見分けるために残す。カタログから消えても分かるようにする
+        imageUrl: item.imageUrl ?? null,
+        itemUrl: item.itemUrl ?? null,
         shopName: item.shopName,
         genreId: item.genreId,
         genreName: item.genreName,
@@ -703,6 +921,12 @@ function bind(root, dateKey) {
         // 投稿時に選んでもらった分類。外部AIの文章を貼るため、これが無いと分析できない
         headerType,
         criteria: label.criteria ?? [],
+        /** 選定理由（追加要件v1.3 3章）。どの基準で選んだ商品が伸びたかを後から見るため */
+        priceTier: priceTierOf(item),
+        matchedCriteria: item.matchedCriteria ?? [],
+        /** ランキング由来か手動追加か。分析で分けられるようにする（5.5） */
+        itemSource: item.source ?? 'ranking',
+        dataSource: item.dataSource ?? 'api',
         /** 分類方式の世代。v1（角度あり）とは集計を混ぜない（1.5） */
         labelVersion: LABEL_VERSION,
         /** 実際に買った商品か。体験談・オリジナル写真の効果を測るための層（3章） */
@@ -726,10 +950,20 @@ function bind(root, dateKey) {
       if (purchased && !hashtags.some((tag) => tag.includes(ORIGINAL_PHOTO_TAG))) {
         warn.push(`購入済みなら #${ORIGINAL_PHOTO_TAG} を付けてください`);
       }
-      toast(
-        warn.length === 0 ? `投稿ログを保存しました（${headerType}）` : `保存しました。${warn.join(' / ')}`,
-        warn.length === 0 ? 2200 : 4200,
-      );
+
+      // 分類まで終わったら、そのままROOMの投稿画面へ渡す。
+      // コピーと遷移をこのボタンのタップの中でやる（iOSのポップアップ制限とクリップボード制限のため）
+      await confirmAction({
+        title: `保存しました（${headerType}）`,
+        description: warn.length === 0 ? '投稿文をコピーしてROOMを開きます。' : warn.join(' / '),
+        href: roomUrlFor(item),
+        actionLabel: '投稿文をコピーしてROOMに投稿',
+        note: 'ROOMのこの商品の投稿画面が開きます。コメント欄に貼り付けてください（未ログインなら楽天のログインを挟みます）。',
+        closeLabel: 'あとで投稿する',
+        onActivate: () => {
+          copyToClipboard(raw);
+        },
+      });
       renderDayList(root, dateKey);
     });
   });
@@ -755,6 +989,19 @@ function bind(root, dateKey) {
       toast(el.checked ? '購入済みにしました。体験談とオリジナル写真が使えます' : '購入済みを外しました');
       renderDayList(root, dateKey);
     });
+  });
+
+  root.querySelectorAll('[data-supermarket]').forEach((el) => {
+    el.addEventListener('change', () => {
+      // 自動判定は商品名からの推定なので、人の判断を上書きとして残す（追加要件v1.3 4.3）
+      store.setCriteriaOverride(el.dataset.supermarket, el.checked);
+      toast(el.checked ? '「スーパーにない」に該当としました' : '「スーパーにない」を外しました');
+      renderDayList(root, dateKey);
+    });
+  });
+
+  root.querySelector('[data-action="add-manual"]')?.addEventListener('click', () => {
+    openManualDialog(root, dateKey);
   });
 
   root.querySelectorAll('[data-copy-tag], [data-copy-tags]').forEach((el) => {

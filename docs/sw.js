@@ -22,7 +22,8 @@
 // v14: カレンダーをGoogleカレンダー風に・CSVエクスポート追加（2026-08-18）
 // v15: 追加要件v1.2（分類を4分類に固定・購入済み・いいね数・タグ候補）（2026-08-18）
 // v16: いいね数をまとめて入れる一覧画面（2026-08-18）
-const SHELL_VERSION = 'v16';
+// v17: 追加要件v1.3（価格下限1,000・価格帯プール・選定理由・手動追加・ROOM導線）（2026-08-19）
+const SHELL_VERSION = 'v17';
 const DATA_VERSION = 'v1';
 const SHELL_CACHE = `room-shell-${SHELL_VERSION}`;
 const DATA_CACHE = `room-data-${DATA_VERSION}`;
@@ -42,6 +43,9 @@ const SHELL_ASSETS = [
   './js/lib/itemName.js',
   './js/lib/postFeatures.js',
   './js/lib/tagSuggest.js',
+  './js/lib/manualItem.js',
+  './js/lib/room.js',
+  './js/lib/pools.js',
   './js/lib/modal.js',
   './js/lib/catalog.js',
   './js/lib/commentText.js',

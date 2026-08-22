@@ -13,6 +13,7 @@
 
 import { app, setAppBar, toast } from '../main.js';
 import { toSearchQuery } from '../lib/itemName.js';
+import { roomPostUrl } from '../lib/room.js';
 import { escapeHtml, fmtDateShort, fmtNum, isoToDateKey, nowJstIso, todayKey } from '../lib/format.js';
 import * as store from '../lib/store.js';
 
@@ -62,21 +63,30 @@ function rowHtml(post) {
     .join(' → ');
 
   return `<div class="likerow">
-    <div class="likerow__head">
-      <span class="likerow__name">${escapeHtml(name)}</span>
-      <span class="likerow__now">${latest ? `<strong>${fmtNum(latest.count)}</strong>` : '<span class="muted">未記録</span>'}</span>
+    <div class="likerow__top">
+      ${
+        post.imageUrl
+          ? `<img class="likerow__thumb" src="${escapeHtml(post.imageUrl)}" alt="" loading="lazy" />`
+          : '<div class="likerow__thumb likerow__thumb--empty" aria-hidden="true">—</div>'
+      }
+      <div class="likerow__body">
+        <div class="likerow__head">
+          <span class="likerow__name">${escapeHtml(name)}</span>
+          <span class="likerow__now">${latest ? `<strong>${fmtNum(latest.count)}</strong>` : '<span class="muted">未記録</span>'}</span>
+        </div>
+        <p class="likerow__meta small muted">
+          ${escapeHtml(fmtDateShort(dateKey))}に投稿${elapsed === null ? '' : `・${elapsed}日前`}
+          ${post.headerType ? `・${escapeHtml(post.headerType)}` : ''}
+          ${post.purchased ? '・購入済み' : ''}
+        </p>
+        ${history ? `<p class="small muted" style="margin:0">${escapeHtml(history)}</p>` : ''}
+      </div>
     </div>
-    <p class="likerow__meta small muted">
-      ${escapeHtml(fmtDateShort(dateKey))}に投稿${elapsed === null ? '' : `・${elapsed}日前`}
-      ${post.headerType ? `・${escapeHtml(post.headerType)}` : ''}
-      ${post.purchased ? '・購入済み' : ''}
-    </p>
-    ${history ? `<p class="small muted" style="margin:0 0 4px">${escapeHtml(history)}</p>` : ''}
     <div class="likes__input">
       <input type="number" inputmode="numeric" min="0" step="1" placeholder="いいね数" data-like="${escapeHtml(post.postId)}" aria-label="${escapeHtml(name)} のいいね数" />
       ${
-        post.itemUrl
-          ? `<a class="btn likerow__link" href="${escapeHtml(post.itemUrl)}" target="_blank" rel="noopener noreferrer">商品</a>`
+        roomPostUrl(post.itemCode)
+          ? `<a class="btn likerow__link" href="${escapeHtml(roomPostUrl(post.itemCode))}" target="_blank" rel="noopener noreferrer">ROOM</a>`
           : ''
       }
     </div>
@@ -91,7 +101,17 @@ export async function renderLikes(root) {
     .sort((a, b) => String(b.postedAt ?? '').localeCompare(String(a.postedAt ?? '')))
     // 商品URLは投稿ログに持っていないので、いま読み込んでいるカタログから補う。
     // 見つからなければボタンを押せない状態にする（過去の商品は日次JSONから落ちる）
-    .map((post) => ({ ...post, itemUrl: app.catalog?.latestByCode.get(post.itemCode)?.itemUrl ?? null }));
+    // 商品URLと画像は投稿ログに持っていないので、いま読み込んでいるカタログから補う。
+    // 見つからなければリンクを出さない（古い商品は日次JSONから落ちる）
+    .map((post) => {
+      const item = app.catalog?.latestByCode.get(post.itemCode);
+      return {
+        ...post,
+        itemUrl: post.itemUrl ?? item?.itemUrl ?? null,
+        // 画像はタイトルだけだとどの商品か分からないため出す
+        imageUrl: post.imageUrl ?? item?.imageUrl ?? null,
+      };
+    });
   const rows = all.filter(matchesFilter);
 
   const unrecorded = all.filter((p) => store.latestLike(p) === null).length;

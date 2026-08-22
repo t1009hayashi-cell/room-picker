@@ -1,6 +1,7 @@
 import type { AppConfig } from './config.js';
 import { buildPrevRankIndex, calcRankDiff, calcReviewDiff, type PrevRankIndex } from './diff.js';
 import { calcPointBoost, extractDiscount } from './discount.js';
+import { judgeCriteria } from './criteria.js';
 import { evaluateExclusion } from './filter.js';
 import { mergeByItemCode, normalizeItem, sortByRank, type NormalizedBase } from './normalize.js';
 import type { FetchResult, RakutenClient } from './rakuten/client.js';
@@ -73,7 +74,7 @@ function enrich(
   earliestPostingDate: Date,
   month: number,
 ): NormalizedItem {
-  const { scoring, ngWords } = options.config;
+  const { scoring, ngWords, supermarketRules } = options.config;
 
   const diff = calcRankDiff(base.itemCode, base.rank, base.source, prevIndex);
   // 直近でレビューがどれだけ増えたか（人気が出ている商品を見分ける材料）
@@ -109,6 +110,13 @@ function enrich(
   // 新着ブースト（追加要件 1.2）の判定に順位変動が要るため、diff を計算したあとで除外を評価する
   const exclusion = evaluateExclusion({ ...base, rankChange: diff.rankChange }, scoring, ngWords, earliestPostingDate);
 
+  // 選定基準の判定（追加要件v1.3 3章）。新着ブーストの結果を使うので除外判定のあとで行う
+  const criteria = judgeCriteria(
+    { ...base, discount, newcomerExempt: exclusion.newcomerExempt },
+    scoring,
+    supermarketRules,
+  );
+
   return {
     ...base,
     ...diff,
@@ -124,6 +132,7 @@ function enrich(
     itemNumericId: null,
     reviewUrl: null,
     ...exclusion,
+    ...criteria,
   };
 }
 

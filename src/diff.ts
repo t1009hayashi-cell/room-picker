@@ -1,4 +1,4 @@
-import type { DailySnapshot } from './types.js';
+import type { ItemSource, DailySnapshot } from './types.js';
 
 export interface PrevRankIndex {
   /** 前日スナップショットが存在したか。無い場合は上昇幅ボーナスを付けない（仕様書 6.4） */
@@ -61,7 +61,7 @@ export interface RankDiff {
 export function calcRankDiff(
   itemCode: string,
   rank: number | null,
-  source: 'ranking' | 'search',
+  source: ItemSource,
   index: PrevRankIndex,
 ): RankDiff {
   if (source !== 'ranking' || rank === null) {

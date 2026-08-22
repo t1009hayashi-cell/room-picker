@@ -1,8 +1,8 @@
 {
   "_note": "仕様書 6.2 / 6.3 の係数はここ1箇所に集約する。運用しながら調整する前提。",
   "filters": {
-    "_note": "追加要件v1.1: 40〜50代・子どもがいる家庭向けに変更。レビュー件数より平均で品質を見る",
-    "minPrice": 3000,
+    "_note": "追加要件v1.3 0章: 下限3,000円はプロンプトの「1,000〜3,000円をリーチ枠として6〜7割」と矛盾しており、リーチ枠が機械的に落ちていた。1,000に下げる",
+    "minPrice": 1000,
     "minReviewCount": 200,
     "minReviewAverage": 4.3,
     "excludeOutOfStock": true,
@@ -33,14 +33,21 @@
     "pointWeakBonus": 5,
     "duringSaleBonus": 15
   },
+  "priceTier": {
+    "_note": "追加要件v1.3 2章。1,000〜3,000円=リーチ枠（いいね・フォロワー獲得）、3,000円超=収益枠。reachRatio は出力に占めるリーチ枠の割合",
+    "reachMin": 1000,
+    "reachMax": 3000,
+    "reachRatio": 0.7
+  },
   "hotScore": {
+    "_note": "追加要件v1.3 2.3。旧「5,000〜25,000円で+15」はリーチ枠を加点対象外にしていた。価格帯ごとに分ける",
     "rankGainPerRank": 5,
     "newEntryBonus": 30,
     "reviewDivisor": 1000,
     "reviewCap": 20,
-    "priceSweetSpotMin": 5000,
-    "priceSweetSpotMax": 25000,
-    "priceSweetSpotBonus": 15,
+    "reachPriceBonus": 15,
+    "revenuePriceMax": 25000,
+    "revenuePriceBonus": 10,
     "rateBoostedBonus": 40,
     "pointRateCap": 20
   },

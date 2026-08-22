@@ -65,6 +65,59 @@ export function chooseOne({ title, description = '', options, cancelLabel = 'や
   });
 }
 
+/**
+ * 主たる操作がリンク遷移になる確認ダイアログ。
+ *
+ * **なぜ `window.open` にしないのか。**
+ * 分類ダイアログの `await` を挟んだあとの `window.open` は
+ * ユーザー操作の文脈から外れており、iOS Safari のポップアップブロックに引っかかる。
+ * クリップボードへの書き込みも同じ理由で失敗しうる。
+ * 実体の `<a>` をタップしてもらえば、コピーも遷移もユーザー操作の中で起きる。
+ *
+ * `onActivate` はリンクを押した瞬間に呼ばれる（遷移は止めない）。
+ */
+export function confirmAction({ title, description = '', href, actionLabel, note = '', closeLabel = '閉じる', onActivate }) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal';
+    overlay.innerHTML = `
+      <div class="modal__panel" role="dialog" aria-modal="true" aria-label="${escapeAttr(title)}">
+        <h3 class="modal__title">${escapeHtml(title)}</h3>
+        ${description ? `<p class="modal__desc">${escapeHtml(description)}</p>` : ''}
+        <a class="btn btn--primary modal__link" href="${escapeAttr(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(actionLabel)}</a>
+        ${note ? `<p class="small muted" style="margin:8px 0 0">${escapeHtml(note)}</p>` : ''}
+        <button class="btn btn--ghost modal__cancel">${escapeHtml(closeLabel)}</button>
+      </div>
+    `;
+
+    let done = false;
+    const close = (value) => {
+      if (done) return;
+      done = true;
+      document.removeEventListener('keydown', onKey);
+      overlay.remove();
+      resolve(value);
+    };
+    const onKey = (event) => {
+      if (event.key === 'Escape') close(false);
+    };
+
+    overlay.querySelector('.modal__link').addEventListener('click', () => {
+      // 遷移は既定の動作に任せる。ここではコピーなど、同じ操作でやりたいことだけ行う
+      onActivate?.();
+      close(true);
+    });
+    overlay.addEventListener('click', (event) => {
+      if (event.target === overlay) close(false);
+      if (event.target.closest('.modal__cancel')) close(false);
+    });
+    document.addEventListener('keydown', onKey);
+
+    document.body.appendChild(overlay);
+    overlay.querySelector('.modal__link').focus();
+  });
+}
+
 function escapeHtml(text) {
   return String(text ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 }

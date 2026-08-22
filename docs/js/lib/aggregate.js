@@ -112,6 +112,25 @@ export function labeledPosts(posts) {
   return posts.filter((post) => post.labelVersion === 'v2');
 }
 
+/**
+ * 手動追加した投稿を除く（追加要件v1.3 5.5）。
+ *
+ * 価格帯比率の集計には**含める**（手動追加が高単価に偏っていれば、それも実態）。
+ * 一方で手入力分はデータの質が違うので、選定ロジックを見るときは外せるようにする。
+ */
+export function excludeManualPosts(posts) {
+  return posts.filter((post) => (post.itemSource ?? 'ranking') !== 'manual');
+}
+
+/** 価格帯別（追加要件v1.3 2章）。リーチ枠と収益枠のどちらが伸びているかを見る */
+export function byPriceTier(posts, byPostId) {
+  return summarize(posts, byPostId, (post) => {
+    if (post.priceTier === 'reach') return 'リーチ枠（1,000〜3,000円）';
+    if (post.priceTier === 'revenue') return '収益枠（3,000円超）';
+    return '（記録なし）';
+  });
+}
+
 /** 購入済み／未購入で分ける。買う価値があるかを数字で見るための層（3章） */
 export function byPurchased(posts, byPostId) {
   return summarize(posts, byPostId, (post) => (post.purchased ? '購入済み' : '未購入'));

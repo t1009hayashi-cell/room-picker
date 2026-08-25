@@ -641,6 +641,16 @@ function openManualDialog(root, dateKey) {
       <label class="field"><span>ショップ名（必須）</span><input type="text" data-m="shop" /></label>
       <label class="field"><span>レビュー件数（任意）</span><input type="number" inputmode="numeric" min="0" data-m="rc" /></label>
       <label class="field"><span>レビュー平均（任意）</span><input type="number" inputmode="decimal" min="0" max="5" step="0.01" data-m="ra" /></label>
+      <label class="field"><span>投稿した文章（任意・すでに投稿済みなら貼ってください）</span>
+        <textarea data-m="text" placeholder="ROOMに投稿した本文をそのまま貼る"></textarea></label>
+      <label class="postlabel__purchase">
+        <input type="checkbox" data-m="posted" />
+        <span>すでにROOMに投稿済みとして記録する</span>
+      </label>
+      <p class="small muted" style="margin:2px 0 10px">
+        投稿ログを作ります。<strong>いいね数の入力欄はこれを作ってから出ます。</strong>
+        あとから商品カードの「投稿済みにする」でも同じことができます。
+      </p>
       <p class="small muted" style="margin:0 0 10px">
         手入力分は <code>手入力</code> の印が付き、選定ロジックの検証には使いません（データの質が違うため）。
       </p>
@@ -685,12 +695,24 @@ function openManualDialog(root, dateKey) {
     );
     // 手動追加はその日の候補として持つ。日をまたいで一覧に出し続けないため
     store.addManualItem({ ...item, dateKey });
+
+    const text = overlay.querySelector('[data-m="text"]').value;
+    if (text.trim() !== '') store.setComment(item.itemCode, text);
+    const markPosted = overlay.querySelector('[data-m="posted"]').checked;
     close();
+
+    if (markPosted) {
+      // 投稿ログまで作る。**手動追加の目的は「投稿した全件を記録すること」**なので、
+      // ここで作らないと分析から漏れたままになる（＝いいね数も入れられない）
+      recordPost(root, dateKey, item.itemCode, { openRoom: false });
+      return;
+    }
+
     toast(
       item.manualWarnings.length === 0
-        ? '追加しました'
+        ? '追加しました。いいね数を入れるには「投稿済みにする」を押してください'
         : `追加しました。通常の抽出条件では除外される商品です（${item.manualWarnings.join(' / ')}）`,
-      item.manualWarnings.length === 0 ? 2200 : 4600,
+      4200,
     );
     renderDayList(root, dateKey);
   });
@@ -699,8 +721,142 @@ function openManualDialog(root, dateKey) {
   overlay.querySelector('[data-m="url"]').focus();
 }
 
+/**
+ * 商品コードから商品を引く。
+ *
+ * **手動追加した商品はカタログに入っていない。**
+ * カタログだけを見ていると、手動追加の商品では「投稿済みにする」が
+ * 無言で何もせずに終わり、投稿ログが作られない（＝いいね数の入力欄も出ない）。
+ * 手動追加を記録する目的そのものが果たせなくなるため、こちらも必ず探す。
+ */
+/**
+ * 投稿ログを1件確定させる（仕様書 5.4）。
+ *
+ * 商品カードの「投稿済みにする」と、手動追加フォームの「すでに投稿済み」の
+ * **両方から呼ぶ。** 手動追加は「投稿した全件を記録する」ことが目的なので、
+ * 追加したその場でログを作れないと目的を果たせない（いいね数も入れられない）。
+ *
+ * `openRoom` を立てると、保存後に「投稿文をコピーしてROOMに投稿」を出す。
+ * すでに投稿済みのものを記録するときは不要なので出さない。
+ */
+async function recordPost(root, dateKey, code, { text = null, openRoom = true } = {}) {
+  const state = store.getState();
+  const item = findItem(code);
+  if (!item) {
+    // ここに来るのは商品を引けなかったとき。黙って終わると原因が分からないので必ず知らせる
+    toast('商品が見つかりません。データを読み直してからもう一度お試しください', 4200);
+    return;
+  }
+
+  const raw = text ?? store.getComment(code) ?? '';
+  store.setComment(code, raw);
+
+  const { body, hashtags } = splitComment(raw);
+  // 1.4: 先頭の空行やタグ行ではなく、本文の最初の中身のある行をヘッダーとして残す
+  const firstLine = headerLine(raw);
+
+  // 1.3: 分類を選ばないと確定できない。実際に投稿した1行目を見せて、その場で判定してもらう
+  const headerType = await chooseOne({
+    title: '投稿の1行目はどれ？',
+    description: firstLine === '' ? '（1行目が空です。分からなければ「判定不可」を選んでください）' : firstLine,
+    options: HEADER_TYPES.map((v) => ({ value: v, label: v, note: HEADER_TYPE_NOTES[v] })),
+    cancelLabel: 'まだ記録しない',
+  });
+  if (headerType === null) {
+    renderDayList(root, dateKey);
+    return;
+  }
+  store.setPostLabel(code, { headerType });
+
+  // 貼り付けた実際の投稿文から特徴を取る。生成した下書きではなくこれを見る
+  const features = extractPostFeatures(raw);
+  const label = store.getPostLabel(code);
+  const purchased = Boolean(state.purchased?.[code]);
+  // アプリ全体を JST 固定で扱うため、投稿ログも +09:00 表記で残す
+  const postedAt = nowJstIso();
+  const sale = isDuringSale(app.sales, postedAt);
+
+  // 仕様書 5.4: この記録がないと後から分析ができない
+  store.addPost({
+    postId: uuid(),
+    postedAt,
+    // 押したときに見ていた日。投稿済みの印をその日にだけ付けるために持つ
+    dateKey,
+    itemCode: item.itemCode,
+    // 成果データとの突合キー。短縮・整形・トリムを一切行わない
+    itemNameRaw: item.itemName,
+    // いいね一覧で「どの商品か」を見分けるために残す。カタログから消えても分かるようにする
+    imageUrl: item.imageUrl ?? null,
+    itemUrl: item.itemUrl ?? null,
+    shopName: item.shopName,
+    genreId: item.genreId,
+    genreName: item.genreName,
+    itemPrice: item.itemPrice,
+    estimatedReward: item.estimatedReward,
+    reviewCount: item.reviewCount,
+    reviewCountChange: item.reviewCountChange ?? null,
+    // 投稿時に選んでもらった分類。外部AIの文章を貼るため、これが無いと分析できない
+    headerType,
+    criteria: label.criteria ?? [],
+    /** 選定理由（追加要件v1.3 3章）。どの基準で選んだ商品が伸びたかを後から見るため */
+    priceTier: priceTierOf(item),
+    matchedCriteria: item.matchedCriteria ?? [],
+    /** ランキング由来か手動追加か。分析で分けられるようにする（5.5） */
+    itemSource: item.source ?? 'ranking',
+    dataSource: item.dataSource ?? 'api',
+    /** 分類方式の世代。v1（角度あり）とは集計を混ぜない（1.5） */
+    labelVersion: LABEL_VERSION,
+    /** 実際に買った商品か。体験談・オリジナル写真の効果を測るための層（3章） */
+    purchased,
+    // 実際に投稿した文章から機械的に測れる特徴（analytics の層に使う）
+    features,
+    firstLine,
+    firstLineLength: charLength(firstLine),
+    commentBody: body,
+    // 4.3: タグは本文から機械的に取る。列によって入り方が違う状態を無くす
+    hashtags,
+    usedAiGeneration: Boolean(state.aiCopied[code]),
+    duringSale: sale.during,
+    saleId: sale.saleId,
+    rankAtPost: item.rank,
+    rankChangeAtPost: item.rankChange,
+  });
+
+  const warn = [];
+  if (hashtags.length === 0) warn.push('ハッシュタグが本文から見つかりません');
+  if (purchased && !hashtags.some((tag) => tag.includes(ORIGINAL_PHOTO_TAG))) {
+    warn.push(`購入済みなら #${ORIGINAL_PHOTO_TAG} を付けてください`);
+  }
+
+  if (openRoom) {
+    // 分類まで終わったら、そのままROOMの投稿画面へ渡す。
+    // コピーと遷移をこのボタンのタップの中でやる（iOSのポップアップ制限とクリップボード制限のため）
+    await confirmAction({
+      title: `保存しました（${headerType}）`,
+      description: warn.length === 0 ? '投稿文をコピーしてROOMを開きます。' : warn.join(' / '),
+      href: roomUrlFor(item),
+      actionLabel: '投稿文をコピーしてROOMに投稿',
+      note: 'ROOMのこの商品の投稿画面が開きます。コメント欄に貼り付けてください（未ログインなら楽天のログインを挟みます）。',
+      closeLabel: 'あとで投稿する',
+      onActivate: () => {
+        copyToClipboard(raw);
+      },
+    });
+  } else {
+    toast(
+      warn.length === 0
+        ? `投稿ログを保存しました（${headerType}）。いいね数を入れられます`
+        : `保存しました。${warn.join(' / ')}`,
+      4200,
+    );
+  }
+  renderDayList(root, dateKey);
+}
+
 function findItem(code) {
-  return app.catalog?.latestByCode.get(code) ?? null;
+  const fromCatalog = app.catalog?.latestByCode.get(code);
+  if (fromCatalog) return fromCatalog;
+  return store.getState().manualItems?.find((m) => m.itemCode === code) ?? null;
 }
 
 function updateCounter(root, code) {
@@ -862,109 +1018,14 @@ function bind(root, dateKey) {
   root.querySelectorAll('[data-post]').forEach((el) => {
     el.addEventListener('click', async () => {
       const code = el.dataset.post;
-      const state = store.getState();
       if (store.isPosted(dateKey, code)) {
         store.undoPost(dateKey, code);
         toast('投稿済みを取り消しました');
         renderDayList(root, dateKey);
         return;
       }
-      const item = findItem(code);
-      if (!item) return;
-
       const area = root.querySelector(`[data-comment="${CSS.escape(code)}"]`);
-      const raw = area?.value ?? '';
-      store.setComment(code, raw);
-
-      const { body, hashtags } = splitComment(raw);
-      // 1.4: 先頭の空行やタグ行ではなく、本文の最初の中身のある行をヘッダーとして残す
-      const firstLine = headerLine(raw);
-
-      // 1.3: 分類を選ばないと確定できない。
-      // 実際に投稿した1行目を見せて、その場で判定してもらう
-      const headerType = await chooseOne({
-        title: '投稿の1行目はどれ？',
-        description: firstLine === '' ? '（1行目が空です）' : firstLine,
-        options: HEADER_TYPES.map((v) => ({ value: v, label: v, note: HEADER_TYPE_NOTES[v] })),
-        cancelLabel: 'まだ投稿しない',
-      });
-      if (headerType === null) return;
-      store.setPostLabel(code, { headerType });
-
-      // 貼り付けた実際の投稿文から特徴を取る。生成した下書きではなくこれを見る
-      const features = extractPostFeatures(raw);
-      const label = store.getPostLabel(code);
-      const purchased = Boolean(state.purchased?.[code]);
-      // アプリ全体を JST 固定で扱うため、投稿ログも +09:00 表記で残す
-      const postedAt = nowJstIso();
-      const sale = isDuringSale(app.sales, postedAt);
-
-      // 仕様書 5.4: この記録がないと後から分析ができない
-      store.addPost({
-        postId: uuid(),
-        postedAt,
-        // 押したときに見ていた日。投稿済みの印をその日にだけ付けるために持つ
-        dateKey,
-        itemCode: item.itemCode,
-        // 成果データとの突合キー。短縮・整形・トリムを一切行わない
-        itemNameRaw: item.itemName,
-        // いいね一覧で「どの商品か」を見分けるために残す。カタログから消えても分かるようにする
-        imageUrl: item.imageUrl ?? null,
-        itemUrl: item.itemUrl ?? null,
-        shopName: item.shopName,
-        genreId: item.genreId,
-        genreName: item.genreName,
-        itemPrice: item.itemPrice,
-        estimatedReward: item.estimatedReward,
-        reviewCount: item.reviewCount,
-        reviewCountChange: item.reviewCountChange ?? null,
-        // 投稿時に選んでもらった分類。外部AIの文章を貼るため、これが無いと分析できない
-        headerType,
-        criteria: label.criteria ?? [],
-        /** 選定理由（追加要件v1.3 3章）。どの基準で選んだ商品が伸びたかを後から見るため */
-        priceTier: priceTierOf(item),
-        matchedCriteria: item.matchedCriteria ?? [],
-        /** ランキング由来か手動追加か。分析で分けられるようにする（5.5） */
-        itemSource: item.source ?? 'ranking',
-        dataSource: item.dataSource ?? 'api',
-        /** 分類方式の世代。v1（角度あり）とは集計を混ぜない（1.5） */
-        labelVersion: LABEL_VERSION,
-        /** 実際に買った商品か。体験談・オリジナル写真の効果を測るための層（3章） */
-        purchased,
-        // 実際に投稿した文章から機械的に測れる特徴（analytics の層に使う）
-        features,
-        firstLine,
-        firstLineLength: charLength(firstLine),
-        commentBody: body,
-        // 4.3: タグは本文から機械的に取る。列によって入り方が違う状態を無くす
-        hashtags,
-        usedAiGeneration: Boolean(state.aiCopied[code]),
-        duringSale: sale.during,
-        saleId: sale.saleId,
-        rankAtPost: item.rank,
-        rankChangeAtPost: item.rankChange,
-      });
-
-      const warn = [];
-      if (hashtags.length === 0) warn.push('ハッシュタグが本文から見つかりません');
-      if (purchased && !hashtags.some((tag) => tag.includes(ORIGINAL_PHOTO_TAG))) {
-        warn.push(`購入済みなら #${ORIGINAL_PHOTO_TAG} を付けてください`);
-      }
-
-      // 分類まで終わったら、そのままROOMの投稿画面へ渡す。
-      // コピーと遷移をこのボタンのタップの中でやる（iOSのポップアップ制限とクリップボード制限のため）
-      await confirmAction({
-        title: `保存しました（${headerType}）`,
-        description: warn.length === 0 ? '投稿文をコピーしてROOMを開きます。' : warn.join(' / '),
-        href: roomUrlFor(item),
-        actionLabel: '投稿文をコピーしてROOMに投稿',
-        note: 'ROOMのこの商品の投稿画面が開きます。コメント欄に貼り付けてください（未ログインなら楽天のログインを挟みます）。',
-        closeLabel: 'あとで投稿する',
-        onActivate: () => {
-          copyToClipboard(raw);
-        },
-      });
-      renderDayList(root, dateKey);
+      await recordPost(root, dateKey, code, { text: area?.value ?? '', openRoom: true });
     });
   });
 

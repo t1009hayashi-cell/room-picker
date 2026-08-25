@@ -524,6 +524,35 @@ https://openapi.rakuten.co.jp/ichibagt/api/IchibaGenre/Search/20260701
 投稿ログは同じキーの `posts`。どちらもJSONエクスポートに含まれる。
 **その端末のそのブラウザにしか無い。**
 
+#### 手動追加の入力を減らした（2026-08-25）
+
+**iPhoneの楽天アプリで「共有」すると、URL単体ではなくこの形でコピーされる。**
+
+```
+【楽天1位】【無料ラッピング】GLOBAL 包丁 三徳包丁 刃渡り18cm 日本製<br><br>［ … ］
+[楽天] #Rakutenichiba
+https://item.rakuten.co.jp/importshopaqua/glb-sk/?scid=wi_ich_iphoneapp_item_share
+```
+
+URLだけに削る作業を人にやらせない。`parseSharedText()` が
+**テキストのどこにあってもURLを拾い、1行目から商品名も取り出す**
+（生の `<br>` を落とし、`[楽天] #Rakutenichiba` の定型行は捨てる）。
+入力欄は textarea にして、貼った時点で商品名を自動で埋める。
+
+**ショップ名を任意にした。** 共有テキストに表示名が含まれないため。
+空ならURLのショップコードで代用する。
+成果CSVとの突合は `match.js` がまず `itemNameRaw` の完全一致で見て、
+外れたときだけ「ショップ名＋商品名の先頭」で見る。**ショップ名は後者の手がかりにしか使わない。**
+
+**レビュー未入力は除外理由ではない**ので `manualNotes` として警告と分けた。
+「⚠ 通常の抽出条件では除外されます」に混ぜると、除外される商品だと誤読される。
+
+> **商品ページからの自動取得はできない。** 2026-08-25 に確認したところ
+> `item.rakuten.co.jp` は `access-control-allow-origin` を返さず、
+> ブラウザからのfetchはCORSで弾かれる（加えて EUC-JP）。
+> APIを使う道も認証情報を静的サイトに置けないため塞がっている。
+> **価格だけはどうしても手入力が要る**（`priceTier` の判定に必要なため）。
+
 #### ROOMの投稿画面へ直接飛ばす（追加要望）
 
 **`https://room.rakuten.co.jp/mix?itemcode={shopCode}%3A{itemId}`** が投稿画面。

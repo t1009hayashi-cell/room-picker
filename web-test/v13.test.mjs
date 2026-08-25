@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { buildPools, interleaveByRatio, priceTierOf } from '../docs/js/lib/pools.js';
-import { buildManualItem, parseItemUrl } from '../docs/js/lib/manualItem.js';
+import { buildManualItem, parseItemUrl, parseSharedText } from '../docs/js/lib/manualItem.js';
 import { roomPostUrl, roomSearchUrl, roomUrlFor } from '../docs/js/lib/room.js';
 import { byPriceTier, excludeManualPosts } from '../docs/js/lib/aggregate.js';
 import { matchResults } from '../docs/js/lib/match.js';
@@ -118,6 +118,50 @@ describe('手動追加（追加要件v1.3 5章）', () => {
     assert.equal(item.source, 'manual');
     assert.equal(item.dataSource, 'manual-input');
     assert.equal(item.priceTier, 'reach');
+  });
+
+  it('ショップ名が空ならURLのショップコードで代用する（共有テキストに表示名が無いため）', () => {
+    const item = buildManualItem(
+      { ...parseItemUrl('https://item.rakuten.co.jp/importshopaqua/glb-sk/'), itemName: 'x', itemPrice: 1980 },
+      settings,
+    );
+    assert.equal(item.shopName, 'importshopaqua');
+  });
+});
+
+describe('楽天アプリの共有テキストから取り出す', () => {
+  const NL = String.fromCharCode(10);
+  const shared = [
+    '【楽天1位】【無料ラッピング】【豪華特典付き】GLOBAL 包丁 三徳包丁 刃渡り18cm 日本製<br><br>［ グローバル 三徳包丁 G-46 刃渡り18cm ］',
+    '[楽天] #Rakutenichiba',
+    'https://item.rakuten.co.jp/importshopaqua/glb-sk/?scid=wi_ich_iphoneapp_item_share',
+  ].join(NL);
+
+  it('URLだけに削らなくても読み取れる', () => {
+    const r = parseSharedText(shared);
+    assert.equal(r.ok, true);
+    assert.equal(r.itemCode, 'importshopaqua:glb-sk');
+    assert.equal(r.itemUrl, 'https://item.rakuten.co.jp/importshopaqua/glb-sk/');
+  });
+
+  it('商品名も取り出す（手で写さなくて済むように）', () => {
+    const r = parseSharedText(shared);
+    assert.ok(r.itemName.includes('GLOBAL 包丁 三徳包丁'));
+    // 共有テキストに混ざる生の <br> は残さない
+    assert.ok(!r.itemName.includes('<br>'));
+    // 共有の定型行は商品名ではない
+    assert.ok(!r.itemName.includes('Rakutenichiba'));
+  });
+
+  it('URLだけを貼っても通る', () => {
+    const r = parseSharedText('https://item.rakuten.co.jp/importshopaqua/glb-sk/');
+    assert.equal(r.ok, true);
+    assert.equal(r.itemName, '');
+  });
+
+  it('楽天以外は断る', () => {
+    assert.equal(parseSharedText('見てね https://www.amazon.co.jp/dp/B01').ok, false);
+    assert.equal(parseSharedText('').ok, false);
   });
 });
 

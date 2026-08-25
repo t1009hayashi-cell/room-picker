@@ -24,7 +24,8 @@
 // v16: いいね数をまとめて入れる一覧画面（2026-08-18）
 // v17: 追加要件v1.3（価格下限1,000・価格帯プール・選定理由・手動追加・ROOM導線）（2026-08-19）
 // v18: 手動追加した商品を投稿済みにできなかったのを修正（2026-08-25）
-const SHELL_VERSION = 'v18';
+// v19: 楽天アプリの共有テキストをそのまま貼れるようにした（2026-08-25）
+const SHELL_VERSION = 'v19';
 const DATA_VERSION = 'v1';
 const SHELL_CACHE = `room-shell-${SHELL_VERSION}`;
 const DATA_CACHE = `room-data-${DATA_VERSION}`;

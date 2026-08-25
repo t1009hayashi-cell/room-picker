@@ -51,6 +51,48 @@ export function parseItemUrl(url) {
 }
 
 /**
+ * 楽天アプリの「共有」で得られるテキストから、URLと商品名を取り出す。
+ *
+ * iPhoneの楽天アプリで商品を共有すると、URL単体ではなく次の形でコピーされる。
+ *
+ * ```
+ * 【楽天1位】【無料ラッピング】GLOBAL 包丁 三徳包丁 刃渡り18cm 日本製<br><br>［ … ］
+ * [楽天] #Rakutenichiba
+ * https://item.rakuten.co.jp/importshopaqua/glb-sk/?scid=wi_ich_iphoneapp_item_share
+ * ```
+ *
+ * **URLだけに削るのを人にやらせない。** そのまま貼れば済むようにする。
+ * ついでに1行目が商品名なので、それも埋めてしまう。
+ */
+export function parseSharedText(text) {
+  const raw = String(text ?? '');
+  // テキストのどこにあってもURLを拾う
+  const match = raw.match(/https?:\/\/[^\s<>"']+/u);
+  const parsed = parseItemUrl(match ? match[0] : raw.trim());
+  if (!parsed.ok) return parsed;
+
+  return { ...parsed, itemName: extractSharedName(raw, match ? match[0] : '') };
+}
+
+/** アプリの定型行を落として、商品名の行だけ取り出す */
+function extractSharedName(raw, url) {
+  const body = url === '' ? raw : raw.slice(0, raw.indexOf(url));
+  const line = body
+    .split(/\r?\n/u)
+    // 「[楽天] #Rakutenichiba」のような共有の定型行は商品名ではない
+    .filter((l) => l.trim() !== '' && !/^\[楽天\]/u.test(l.trim()) && !/^#\S+$/u.test(l.trim()))
+    .join(' ');
+
+  return (
+    line
+      // 共有テキストには生の <br> が混ざる
+      .replace(/<br\s*\/?>/giu, ' ')
+      .replace(/[\s　]+/gu, ' ')
+      .trim()
+  );
+}
+
+/**
  * 手入力の内容から、候補一覧の商品と同じ形のレコードを作る。
  *
  * 5.3 のとおり**除外条件に該当しても除外しない。** ユーザーが意図して選んだものなので
@@ -61,6 +103,10 @@ export function buildManualItem(input, settings) {
   const reviewCount = Number(input.reviewCount ?? 0) || 0;
   const reviewAverage = Number(input.reviewAverage ?? 0) || 0;
 
+  // ショップ名は成果CSVとの突合で「商品名が一致しなかったときの手がかり」にしか使わない。
+  // 楽天アプリの共有テキストには表示名が含まれないため、無ければURLのショップコードで代用する
+  const shopName = String(input.shopName ?? '').trim() || (input.shopCode ?? '');
+
   const warnings = [];
   if (price < (settings.minPrice ?? 1000)) warnings.push(`価格${price.toLocaleString('en-US')}円（下限${settings.minPrice}円未満）`);
   if (reviewCount > 0 && reviewCount < (settings.minReview ?? 200)) {
@@ -69,8 +115,10 @@ export function buildManualItem(input, settings) {
   if (reviewAverage > 0 && reviewAverage < (settings.minReviewAverage ?? 4.3)) {
     warnings.push(`評価${reviewAverage}（基準${settings.minReviewAverage}未満）`);
   }
+  // レビュー未入力は**除外理由ではない**（任意項目）。混ぜると「除外される」と読めてしまう
+  const notes = [];
   if (reviewCount === 0 && reviewAverage === 0) {
-    warnings.push('レビュー情報が未入力のため「評価が高い」を判定できません');
+    notes.push('レビューが未入力なので「評価が高い」は判定していません');
   }
 
   const item = {
@@ -90,7 +138,7 @@ export function buildManualItem(input, settings) {
     itemPriceMin: price,
     itemPriceMax: price,
     priceMismatch: false,
-    shopName: String(input.shopName ?? '').trim(),
+    shopName,
     shopCode: input.shopCode ?? '',
     reviewCount,
     reviewAverage,
@@ -124,6 +172,8 @@ export function buildManualItem(input, settings) {
     criteriaDetail: null,
     /** 通常の抽出条件では除外される理由。除外はしないが、カードに警告として出す（5.3） */
     manualWarnings: warnings,
+    /** 除外理由ではないが伝えたいこと。警告と混ぜない */
+    manualNotes: notes,
     addedAt: input.addedAt,
   };
   return item;

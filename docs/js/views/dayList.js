@@ -11,7 +11,7 @@ import { headerLine, measureComment, splitComment } from '../lib/commentText.js'
 import { toSearchQuery } from '../lib/itemName.js';
 import { chooseOne, confirmAction } from '../lib/modal.js';
 import { buildPools, priceTierOf } from '../lib/pools.js';
-import { buildManualItem, parseItemUrl } from '../lib/manualItem.js';
+import { buildManualItem, parseSharedText } from '../lib/manualItem.js';
 import { roomUrlFor } from '../lib/room.js';
 import { ORIGINAL_PHOTO_TAG, suggestTags, tagLine } from '../lib/tagSuggest.js';
 import { CRITERIA, HEADER_TYPES, LABEL_VERSION, extractPostFeatures } from '../lib/postFeatures.js';
@@ -312,9 +312,11 @@ function criteriaHtml(item, state) {
 function manualWarningHtml(item) {
   if (item.source !== 'manual') return '';
   const list = item.manualWarnings ?? [];
+  const notes = item.manualNotes ?? [];
   return `<div class="warnbar">
     手動で追加した商品です（データは手入力のため、選定ロジックの検証には使いません）。
     ${list.length === 0 ? '' : `<br>⚠ 通常の抽出条件では除外されます：${escapeHtml(list.join(' / '))}`}
+    ${notes.length === 0 ? '' : `<br>${escapeHtml(notes.join(' / '))}`}
   </div>`;
 }
 
@@ -635,12 +637,18 @@ function openManualDialog(root, dateKey) {
         <strong>投稿した全件が記録されていないと、比率も平均も出せません。</strong>
       </p>
       <label class="field"><span>楽天の商品URL（必須）</span>
-        <input type="url" inputmode="url" data-m="url" placeholder="https://item.rakuten.co.jp/…" /></label>
-      <label class="field"><span>商品名（必須）</span><input type="text" data-m="name" /></label>
+        <textarea data-m="url" rows="3" placeholder="楽天アプリの「共有」で出たテキストをそのまま貼ってください"></textarea></label>
+      <p class="small muted" style="margin:-4px 0 8px">
+        URLだけに削る必要はありません。<strong>共有したテキストをそのまま貼れば、URLと商品名を取り出します。</strong>
+      </p>
+      <label class="field"><span>商品名（必須・貼ると自動で入ります）</span><input type="text" data-m="name" /></label>
       <label class="field"><span>価格（必須・円）</span><input type="number" inputmode="numeric" min="0" data-m="price" /></label>
-      <label class="field"><span>ショップ名（必須）</span><input type="text" data-m="shop" /></label>
+      <label class="field"><span>ショップ名（任意）</span><input type="text" data-m="shop" placeholder="空ならURLのショップコードを使います" /></label>
       <label class="field"><span>レビュー件数（任意）</span><input type="number" inputmode="numeric" min="0" data-m="rc" /></label>
       <label class="field"><span>レビュー平均（任意）</span><input type="number" inputmode="decimal" min="0" max="5" step="0.01" data-m="ra" /></label>
+      <p class="small muted" style="margin:-4px 0 8px">
+        レビューは<strong>入れなくて構いません</strong>。「評価が高い」の判定に使うだけで、投稿の記録には影響しません。
+      </p>
       <label class="field"><span>投稿した文章（任意・すでに投稿済みなら貼ってください）</span>
         <textarea data-m="text" placeholder="ROOMに投稿した本文をそのまま貼る"></textarea></label>
       <label class="postlabel__purchase">
@@ -672,11 +680,20 @@ function openManualDialog(root, dateKey) {
     if (event.target === overlay || event.target.closest('.modal__cancel')) close();
   });
 
+  // 貼った時点で商品名を埋める。手で消してあれば尊重する
+  overlay.querySelector('[data-m="url"]').addEventListener('input', () => {
+    const parsed = parseSharedText(val('url'));
+    const nameField = overlay.querySelector('[data-m="name"]');
+    if (parsed.ok && parsed.itemName && nameField.value.trim() === '') {
+      nameField.value = parsed.itemName;
+    }
+    if (parsed.ok) error.hidden = true;
+  });
+
   overlay.querySelector('[data-m="save"]').addEventListener('click', () => {
-    const parsed = parseItemUrl(val('url'));
+    const parsed = parseSharedText(val('url'));
     if (!parsed.ok) return fail(parsed.error);
     if (val('name') === '') return fail('商品名を入れてください');
-    if (val('shop') === '') return fail('ショップ名を入れてください');
     const price = Number(val('price'));
     if (!Number.isFinite(price) || price <= 0) return fail('価格を数字で入れてください');
 

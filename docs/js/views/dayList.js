@@ -67,8 +67,18 @@ let sortId = 'deal';
 const STATUS_FILTERS = [
   { id: 'all', label: 'すべて', test: () => true },
   { id: 'reserved', label: '予約のみ', test: (ctx) => Boolean(ctx.state.reserved[ctx.key]) },
+  /**
+   * 未投稿は**商品ごと**に見る。別の日に投稿済みの商品もここでは隠す。
+   * 同じ商品が複数の日に出るため、日ごとに見ると二重投稿を招く。
+   */
   { id: 'unposted', label: '未投稿のみ', test: (ctx) => !ctx.postedIndex.has(ctx.itemCode) },
-  { id: 'posted', label: '投稿済みのみ', test: (ctx) => ctx.postedIndex.has(ctx.itemCode) },
+  /**
+   * 投稿済みは**その日に投稿したものだけ**。
+   * 以前は商品ごとに見ていたため、カレンダーが「投稿3件」と出している日を開いても
+   * 別の日に投稿した商品まで全部並んでいた（カレンダーの数え方と食い違っていた）。
+   * 全期間の投稿を見たいときは投稿一覧（#/likes）を使う。
+   */
+  { id: 'posted', label: 'この日の投稿済み', test: (ctx) => Boolean(ctx.state.posted[ctx.key]) },
 ];
 let statusId = 'all';
 
@@ -228,6 +238,12 @@ export async function renderDayList(root, dateKey) {
         ? `<p class="small muted">この日の候補のうち <strong>${otherDayPostedCount}件</strong> は別の日にすでに投稿しています。「表示: 未投稿のみ」にすると隠せます。</p>`
         : ''
     }
+    ${
+      statusId === 'posted'
+        ? `<p class="small muted">この日に投稿した ${items.length}件です。
+            <a href="#/likes">すべての投稿を見る</a>（全期間・いいね数の記録もここから）</p>`
+        : ''
+    }
     ${poolNotice(pooled, state.settings.reachRatio)}
     ${shopConcentrationNotice(items)}
     <div id="day-items">
@@ -243,6 +259,26 @@ export async function renderDayList(root, dateKey) {
   `;
 
   bind(root, dateKey);
+  scrollToFocus(root, dateKey);
+}
+
+/**
+ * 作業中の商品までスクロールする。
+ * 外部のAIから戻ってきたとき、一覧の先頭からその商品を探し直さずに済むようにする。
+ * すでに画面内にあるときは動かさない（読んでいる位置を勝手に変えない）。
+ */
+function scrollToFocus(root, dateKey) {
+  const focus = store.getFocus();
+  if (!focus || focus.dateKey !== dateKey) return;
+  const card = root.querySelector(`article.card[data-code="${CSS.escape(focus.itemCode)}"]`);
+  if (!card) return;
+  const box = card.getBoundingClientRect();
+  if (box.top >= 0 && box.top < window.innerHeight * 0.6) return;
+  // 画像などで高さが後から伸びるため、1度では狙った位置に止まらないことがある
+  const apply = () => card.scrollIntoView({ block: 'start' });
+  requestAnimationFrame(apply);
+  setTimeout(apply, 150);
+  setTimeout(apply, 450);
 }
 
 /**
@@ -320,6 +356,21 @@ function manualWarningHtml(item) {
   </div>`;
 }
 
+/**
+ * その商品に当てはまる選定基準。
+ * 自動判定（日次JSONの `criteriaDetail`）を使い、
+ * 「スーパーにない」だけはユーザーの手動上書きを優先する（推定なので誤判定が起きるため）。
+ */
+function criteriaOf(item, state) {
+  const detail = item.criteriaDetail;
+  const override = state.criteriaOverride?.[item.itemCode];
+  if (!detail) return item.matchedCriteria ?? [];
+  return CRITERIA.filter((name) => {
+    if (name === 'スーパーにない' && override !== undefined) return override;
+    return Boolean(detail[name]?.matched);
+  });
+}
+
 /** ヘッダー型の説明。何を見て選ぶのかを1行で示す（判定は「投稿した1行目」だけで決まる） */
 const HEADER_TYPE_NOTES = {
   共感課題型: '1行目が読み手の悩み・状況から始まる',
@@ -330,7 +381,12 @@ const HEADER_TYPE_NOTES = {
 };
 
 /**
- * 投稿の補助欄（選定基準・購入済み・タグ候補）。
+ * 投稿の補助欄（購入済み・タグ候補）。
+ *
+ * **選定基準の手動チェックは廃止した。** v1.3で商品ごとの自動判定（選定理由）が
+ * 入ったため、同じことを2か所で入力する形になっていた。
+ * 投稿ログに残す選定基準は自動判定を正とし、
+ * 推定である「スーパーにない」だけ選定理由の欄から手で直せるようにしてある。
  *
  * **ヘッダー型はここに置かない。** 投稿ログ47件中27件が空欄になったのは、
  * 入れなくても投稿を確定できたため。ヘッダー型は「投稿済みにする」の直前に
@@ -338,15 +394,7 @@ const HEADER_TYPE_NOTES = {
  */
 function postLabelHtml(item, state) {
   const code = item.itemCode;
-  const label = state.postLabels?.[code] ?? {};
   const purchased = Boolean(state.purchased?.[code]);
-
-  const criteria = CRITERIA.map(
-    (c) => `<label class="postlabel__check">
-      <input type="checkbox" data-criteria="${escapeHtml(code)}" value="${escapeHtml(c)}" ${(label.criteria ?? []).includes(c) ? 'checked' : ''} />
-      ${escapeHtml(c)}
-    </label>`,
-  ).join('');
 
   // 過去に使ったタグを渡して、自分のコレクションタグを候補に残す
   const past = state.posts.flatMap((p) => p.hashtags ?? []);
@@ -361,7 +409,7 @@ function postLabelHtml(item, state) {
         </div>`;
 
   return `<details class="postlabel">
-    <summary>投稿の補助（選定基準・購入済み・タグ候補）</summary>
+    <summary>投稿の補助（購入済み・タグ候補）</summary>
 
     <label class="postlabel__purchase">
       <input type="checkbox" data-purchased="${escapeHtml(code)}" ${purchased ? 'checked' : ''} />
@@ -371,9 +419,6 @@ function postLabelHtml(item, state) {
       購入済みにすると、URLをコピーしたときにAIへ「一人称の体験談を書いてよい」と伝える1行が付きます。
       自分で撮った写真を使う場合は <strong>#${escapeHtml(ORIGINAL_PHOTO_TAG)}</strong> も付けてください。
     </p>
-
-    <p class="small muted" style="margin:2px 0 4px">選定基準（当てはまるものすべて）</p>
-    <div class="postlabel__checks">${criteria}</div>
 
     <p class="small muted" style="margin:10px 0 4px">
       ハッシュタグ候補（タップでコピー）。フォロワーが少ないうちは<strong>ニッチが唯一の露出経路</strong>です。
@@ -787,7 +832,6 @@ async function recordPost(root, dateKey, code, { text = null, openRoom = true } 
 
   // 貼り付けた実際の投稿文から特徴を取る。生成した下書きではなくこれを見る
   const features = extractPostFeatures(raw);
-  const label = store.getPostLabel(code);
   const purchased = Boolean(state.purchased?.[code]);
   // アプリ全体を JST 固定で扱うため、投稿ログも +09:00 表記で残す
   const postedAt = nowJstIso();
@@ -814,7 +858,12 @@ async function recordPost(root, dateKey, code, { text = null, openRoom = true } 
     reviewCountChange: item.reviewCountChange ?? null,
     // 投稿時に選んでもらった分類。外部AIの文章を貼るため、これが無いと分析できない
     headerType,
-    criteria: label.criteria ?? [],
+    /**
+     * 選定基準は**自動判定（criteriaDetail）を正とする**。
+     * 以前は投稿時に手でチェックしてもらっていたが、v1.3で商品ごとの自動判定が
+     * 入ったため二重入力になっていた。「スーパーにない」の手動上書きだけ反映する。
+     */
+    criteria: criteriaOf(item, state),
     /** 選定理由（追加要件v1.3 3章）。どの基準で選んだ商品が伸びたかを後から見るため */
     priceTier: priceTierOf(item),
     matchedCriteria: item.matchedCriteria ?? [],
@@ -868,6 +917,15 @@ async function recordPost(root, dateKey, code, { text = null, openRoom = true } 
     );
   }
   renderDayList(root, dateKey);
+}
+
+/**
+ * 「いまこの商品を触っている」と控える。
+ * 外部のAIに文章を作らせてアプリに戻ると、iOSはPWAを起動し直すことがあり、
+ * どの商品を見ていたか分からなくなる。その戻り先にする。
+ */
+function markFocus(dateKey, code) {
+  store.setFocus(dateKey, code, findItem(code)?.itemName ?? '');
 }
 
 function findItem(code) {
@@ -929,10 +987,16 @@ function bind(root, dateKey) {
   });
 
 
+  root.querySelectorAll('[data-room]').forEach((el) => {
+    // ROOMを開く＝アプリから離れる。戻ってきたときの行き先にする
+    el.addEventListener('click', () => markFocus(dateKey, el.dataset.room));
+  });
+
   root.querySelectorAll('[data-comment]').forEach((el) => {
     const code = el.dataset.comment;
     updateCounter(root, code);
     el.addEventListener('input', () => updateCounter(root, code));
+    el.addEventListener('focus', () => markFocus(dateKey, code));
     el.addEventListener('change', () => {
       store.setComment(code, el.value);
       toast('投稿文を保存しました');
@@ -986,20 +1050,10 @@ function bind(root, dateKey) {
     });
   });
 
-  root.querySelectorAll('[data-criteria]').forEach((el) => {
-    el.addEventListener('change', () => {
-      const code = el.dataset.criteria;
-      const current = new Set(store.getPostLabel(code).criteria ?? []);
-      if (el.checked) current.add(el.value);
-      else current.delete(el.value);
-      // 表示順を固定するため CRITERIA の並びに揃える
-      store.setPostLabel(code, { criteria: CRITERIA.filter((c) => current.has(c)) });
-    });
-  });
-
   root.querySelectorAll('[data-copy-name]').forEach((el) => {
     el.addEventListener('click', async () => {
       const item = findItem(el.dataset.copyName);
+      if (item) markFocus(dateKey, item.itemCode);
       if (!item?.itemName) return toast('商品名が取得できていません');
       // 楽天の商品名は長すぎてROOMの検索で弾かれるため、検索用に短くしてコピーする
       const query = toSearchQuery(item.itemName);
@@ -1013,6 +1067,8 @@ function bind(root, dateKey) {
     el.addEventListener('click', async () => {
       const item = findItem(el.dataset.copyUrl);
       if (!item?.itemUrl) return toast('この商品にはURLがありません');
+      // URLをコピーする＝これからAIに投げる。戻り先として覚えておく
+      markFocus(dateKey, item.itemCode);
       // 追加要件v1.2 3.2: 購入済みならAIに体験談を書いてよいと伝える。
       // 投稿文の生成は廃止したので、AIに渡るのはこのURLだけ。ここに書き添えるしかない。
       // URLを1行目に置いて、URLだけ使いたいときも壊れないようにする

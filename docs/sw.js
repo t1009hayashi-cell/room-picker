@@ -25,7 +25,8 @@
 // v17: 追加要件v1.3（価格下限1,000・価格帯プール・選定理由・手動追加・ROOM導線）（2026-08-19）
 // v18: 手動追加した商品を投稿済みにできなかったのを修正（2026-08-25）
 // v19: 楽天アプリの共有テキストをそのまま貼れるようにした（2026-08-25）
-const SHELL_VERSION = 'v19';
+// v20: 投稿済みをその日基準に・選定基準の手動入力を廃止・作業の続きから開く（2026-09-06）
+const SHELL_VERSION = 'v20';
 const DATA_VERSION = 'v1';
 const SHELL_CACHE = `room-shell-${SHELL_VERSION}`;
 const DATA_CACHE = `room-data-${DATA_VERSION}`;

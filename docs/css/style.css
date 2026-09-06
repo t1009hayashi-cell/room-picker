@@ -689,6 +689,20 @@ thead th {
   overflow-wrap: anywhere;
 }
 
+/* 作業中の商品への戻り口。外部AIから戻ったときの入口なので目に付く位置に出す */
+.focusbar {
+  border-color: var(--accent);
+}
+
+.focusbar .spread {
+  margin-bottom: 6px;
+}
+
+.focusbar .btn--ghost {
+  padding: 2px 8px;
+  line-height: 1.2;
+}
+
 /* ---- いいね一覧の商品画像 ---- */
 .likerow__top {
   display: flex;

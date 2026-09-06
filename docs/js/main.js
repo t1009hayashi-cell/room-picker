@@ -94,12 +94,26 @@ function setActiveTab(path) {
   });
 }
 
+/** いま表示している画面の識別子。スクロール位置の保存キーに使う */
+let currentRouteKey = null;
+
+/**
+ * 画面を描く。
+ *
+ * **同じ画面を描き直すときはスクロール位置を保つ。**
+ * 以前は毎回先頭に戻していたため、チェックを1つ入れるだけで一覧の先頭に飛ばされ、
+ * 商品を探し直すことになっていた。画面が変わったときだけ先頭に戻す。
+ */
 export async function render() {
   const { path, param } = parseRoute();
+  const routeKey = `${path}/${param}`;
+  const sameView = routeKey === currentRouteKey;
+  const keepY = sameView ? window.scrollY : null;
+
   setActiveTab(path);
-  // 前の画面のスクロール位置が残ると、内容の短い画面で
-  // 表示位置がずれたように見えるため先頭に戻す。
-  window.scrollTo(0, 0);
+  currentRouteKey = routeKey;
+  // 続きから開けるように、最後に見ていた画面を控える
+  store.setLastRoute(location.hash);
 
   if (app.error) {
     viewEl.innerHTML = `<div class="card"><strong>データを読み込めませんでした</strong><p class="small muted">${escapeHtml(app.error)}</p><button class="btn btn--block" data-action="retry">再試行</button></div>`;
@@ -128,7 +142,45 @@ export async function render() {
     console.error(err);
     viewEl.innerHTML = `<div class="card"><strong>画面の描画に失敗しました</strong><p class="small muted">${escapeHtml(err.message)}</p></div>`;
   }
+
+  restoreScroll(routeKey, keepY);
 }
+
+/**
+ * スクロール位置を戻す。
+ * 同じ画面の描き直しなら直前の位置、別の画面なら前回その画面を見ていた位置。
+ * 描画直後は高さが確定していないことがあるので、次のフレームで当てる。
+ */
+function restoreScroll(routeKey, keepY) {
+  // 作業中の商品がその日にあるなら、保存した位置よりそちらを優先する。
+  // 日別リスト側が商品までスクロールするので、ここでは何もしない
+  if (keepY === null && hasFreshFocus(routeKey)) return;
+
+  const y = keepY ?? store.getScrollPos(routeKey);
+  if (y <= 0) return;
+  // 画像や遅延読み込みで高さが後から伸びる。1度では届かないことがあるので数回試す
+  const apply = () => window.scrollTo(0, y);
+  requestAnimationFrame(apply);
+  setTimeout(apply, 120);
+  setTimeout(apply, 400);
+}
+
+/** その画面に「直近の作業中の商品」があるか。古い作業まで拾うと勝手に飛ばされるので24時間で切る */
+function hasFreshFocus(routeKey) {
+  const focus = store.getFocus();
+  if (!focus?.dateKey || routeKey !== `day/${focus.dateKey}`) return false;
+  const hours = (Date.now() - Date.parse(focus.at ?? '')) / 3600000;
+  return Number.isFinite(hours) && hours <= 24;
+}
+
+/** 画面を離れるときに位置を控える。iOSはPWAを黙って終了させるので pagehide でも保存する */
+function saveScroll() {
+  if (currentRouteKey) store.setScrollPos(currentRouteKey, window.scrollY);
+}
+window.addEventListener('pagehide', saveScroll);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') saveScroll();
+});
 
 /* ---- ホーム画面追加の案内（仕様書 5.5 iOSの制約） ---- */
 function isStandalone() {
@@ -161,9 +213,20 @@ document.addEventListener('click', (event) => {
   }
 });
 
-window.addEventListener('hashchange', render);
+/**
+ * 起動が終わるまで hashchange を無視する。
+ * `boot()` がハッシュを入れ直すと hashchange が飛び、`await render()` と二重に走る。
+ * 二重に走ると、後から終わったほうが「同じ画面の描き直し」と判断して
+ * その時点のスクロール位置（＝0）を採用してしまい、復元した位置が打ち消される。
+ */
+let booted = false;
+window.addEventListener('hashchange', () => {
+  if (booted) render();
+});
 
 async function boot() {
+  // ブラウザ任せの復元と、こちらの復元がぶつかると位置が飛ぶ
+  if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
   store.load();
   store.onPersistError(toast);
   try {
@@ -173,8 +236,11 @@ async function boot() {
     console.error(err);
     app.error = `${err.message}（data/index.json を配置してください）`;
   }
-  if (!location.hash) location.hash = '#/calendar';
+  // iOSはPWAを終了させることがあり、そのとき start_url（ハッシュ無し）から起動する。
+  // 外部のAIに文章を作らせて戻ってきたときに最初の画面に戻らないよう、続きから開く
+  if (!location.hash) location.hash = store.getLastRoute() ?? '#/calendar';
   await render();
+  booted = true;
   maybeShowA2hs();
 
   if (store.shouldRemindExport()) {

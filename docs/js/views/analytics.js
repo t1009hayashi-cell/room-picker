@@ -164,10 +164,10 @@ export async function renderAnalytics(root) {
 
     <div class="card">
       <div class="spread">
-        <span class="small">いいね数の記録</span>
+        <span class="small">投稿一覧・いいね数の記録</span>
         <span class="small ${unrecordedLikes > 0 ? '' : 'muted'}">${unrecordedLikes > 0 ? `未記録 ${fmtNum(unrecordedLikes)}件` : 'すべて記録済み'}</span>
       </div>
-      <a class="btn ${unrecordedLikes > 0 ? 'btn--primary' : ''} btn--block" href="#/likes">いいね数をまとめて入れる</a>
+      <a class="btn ${unrecordedLikes > 0 ? 'btn--primary' : ''} btn--block" href="#/likes">投稿一覧を開く（いいね数を入れる）</a>
     </div>
 
     <h2>ヘッダー型別（最重要）</h2>

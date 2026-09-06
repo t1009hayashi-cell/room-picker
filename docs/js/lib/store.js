@@ -91,7 +91,22 @@ function emptyState() {
     extraGenres: [],
     csvImports: [],
     settings: { ...DEFAULT_SETTINGS },
-    meta: { lastExportAt: null, a2hsDismissed: false, firstSeenAt: null, settingsVersion: SETTINGS_VERSION },
+    meta: {
+      lastExportAt: null,
+      a2hsDismissed: false,
+      firstSeenAt: null,
+      settingsVersion: SETTINGS_VERSION,
+      /** 最後に開いていた画面。iOSがPWAを終了させても続きから開けるようにする */
+      lastRoute: null,
+      /** 画面ごとのスクロール位置 */
+      scroll: {},
+    },
+    /**
+     * いま作業中の商品（`{ dateKey, itemCode, itemName, at }`）。
+     * 外部のAIに文章を作らせてアプリに戻ると、iOSはPWAを起動し直すため
+     * 画面が最初に戻り、その商品をもう一度探すことになる。戻り先を覚えておく。
+     */
+    focus: null,
   };
 }
 
@@ -196,6 +211,7 @@ function migrate(raw) {
     posted: migratePosted(raw.posted, posts),
     // 予約投稿は後から足した項目。既存の保存データには入っていない
     reserved: migrateReserved(raw.reserved),
+    focus: raw.focus ?? null,
     postLabels: migrateLabels(raw.postLabels),
     purchased: raw.purchased ?? {},
     criteriaOverride: raw.criteriaOverride ?? {},
@@ -405,6 +421,50 @@ export function addManualItem(item) {
 export function removeManualItem(itemCode) {
   update((s) => {
     s.manualItems = s.manualItems.filter((m) => m.itemCode !== itemCode);
+  });
+}
+
+/* ---- 画面の復帰（作業の続きから開く） ---- */
+
+/** 最後に開いていた画面を控える。頻繁に呼ばれるので保存は軽い項目だけにする */
+export function setLastRoute(hash) {
+  update((s) => {
+    s.meta.lastRoute = hash;
+  });
+}
+
+export function getLastRoute() {
+  return state.meta?.lastRoute ?? null;
+}
+
+export function setScrollPos(routeKey, y) {
+  update((s) => {
+    if (!s.meta.scroll) s.meta.scroll = {};
+    s.meta.scroll[routeKey] = y;
+  });
+}
+
+export function getScrollPos(routeKey) {
+  return state.meta?.scroll?.[routeKey] ?? 0;
+}
+
+/**
+ * 作業中の商品を覚える（外部AIに文章を作らせている間の戻り先）。
+ * 商品名も一緒に持つ。カタログから落ちても「何を触っていたか」は見せられるようにする。
+ */
+export function setFocus(dateKey, itemCode, itemName) {
+  update((s) => {
+    s.focus = { dateKey, itemCode, itemName: itemName ?? '', at: new Date().toISOString() };
+  });
+}
+
+export function getFocus() {
+  return state.focus ?? null;
+}
+
+export function clearFocus() {
+  update((s) => {
+    s.focus = null;
   });
 }
 

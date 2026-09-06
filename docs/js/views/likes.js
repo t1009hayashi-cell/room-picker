@@ -94,7 +94,7 @@ function rowHtml(post) {
 }
 
 export async function renderLikes(root) {
-  setAppBar('いいね数', { back: true });
+  setAppBar('投稿一覧', { back: true });
   const state = store.getState();
   // 新しい投稿ほど数字が動くので上に置く
   const all = [...state.posts]
@@ -119,8 +119,8 @@ export async function renderLikes(root) {
   root.innerHTML = `
     <div class="card">
       <p class="small" style="margin:0 0 6px">
-        my ROOM を開いて、上から順にいいね数を入れてください。
-        入れ終わったら下の<strong>「まとめて記録」</strong>を1回押します。
+        <strong>投稿した商品の全期間の一覧</strong>です（日別リストの「この日の投稿済み」はその日のぶんだけ）。
+        my ROOM を開いて上から順にいいね数を入れ、下の<strong>「まとめて記録」</strong>を1回押します。
       </p>
       <p class="small muted" style="margin:0">
         投稿 ${fmtNum(all.length)}件 / 未記録 ${fmtNum(unrecorded)}件。

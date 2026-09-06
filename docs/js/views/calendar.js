@@ -6,7 +6,8 @@
 
 import { app, navigate, setAppBar, toast } from '../main.js';
 import { summarizeDay } from '../lib/catalog.js';
-import { calendarGrid, escapeHtml, fmtYen, todayKey, WEEKDAY_JA } from '../lib/format.js';
+import { calendarGrid, escapeHtml, fmtDateShort, fmtYen, todayKey, WEEKDAY_JA } from '../lib/format.js';
+import { toSearchQuery } from '../lib/itemName.js';
 import { salesOnDate } from '../lib/schedule.js';
 import * as store from '../lib/store.js';
 
@@ -30,6 +31,29 @@ function shiftMonth(delta) {
     year -= 1;
   }
   cursor = { year, month };
+}
+
+/**
+ * 作業中だった商品への戻り口。
+ *
+ * 外部のAIに文章を作らせてアプリに戻ると、iOSはPWAを起動し直すことがあり、
+ * カレンダーから開き直すことになる。直前に触っていた商品へ1タップで戻れるようにする。
+ * 古い作業まで出すと邪魔なので、直近1日ぶんだけ出す。
+ */
+function focusBanner() {
+  const focus = store.getFocus();
+  if (!focus?.dateKey) return '';
+  const hours = (Date.now() - Date.parse(focus.at ?? '')) / 3600000;
+  if (!Number.isFinite(hours) || hours > 24) return '';
+
+  const name = focus.itemName ? toSearchQuery(focus.itemName, 24) : '';
+  return `<div class="card focusbar">
+    <div class="spread">
+      <span class="small">作業中: <strong>${escapeHtml(name || focus.itemCode)}</strong></span>
+      <button class="btn btn--ghost small" data-action="focus-clear" aria-label="作業中を消す">×</button>
+    </div>
+    <a class="btn btn--primary btn--block" href="#/day/${escapeHtml(focus.dateKey)}">続きから開く（${escapeHtml(fmtDateShort(focus.dateKey))}）</a>
+  </div>`;
 }
 
 export async function renderCalendar(root) {
@@ -98,6 +122,7 @@ export async function renderCalendar(root) {
     .join('');
 
   root.innerHTML = `
+    ${focusBanner()}
     <div class="chips" role="group" aria-label="表示モード">
       <button class="chip" data-mode="scheduled" aria-pressed="${mode === 'scheduled'}">投稿予定日</button>
       <button class="chip" data-mode="discovered" aria-pressed="${mode === 'discovered'}">発見日</button>
@@ -126,6 +151,11 @@ export async function renderCalendar(root) {
 }
 
 function bind(root) {
+  root.querySelector('[data-action="focus-clear"]')?.addEventListener('click', () => {
+    store.clearFocus();
+    renderCalendar(root);
+  });
+
   root.querySelectorAll('[data-mode]').forEach((el) => {
     el.addEventListener('click', () => {
       store.updateSettings({ calendarMode: el.dataset.mode });

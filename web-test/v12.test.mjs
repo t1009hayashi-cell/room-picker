@@ -9,7 +9,7 @@ import { describe, it } from 'node:test';
 import { headerLine, measureComment, splitComment } from '../docs/js/lib/commentText.js';
 import { extractPostFeatures } from '../docs/js/lib/postFeatures.js';
 import { suggestTags, tagLine } from '../docs/js/lib/tagSuggest.js';
-import { byHeaderType, byPurchased, labeledPosts, latestLikeCount } from '../docs/js/lib/aggregate.js';
+import { byHeaderType, byOriginalPhoto, byPurchased, labeledPosts, latestLikeCount } from '../docs/js/lib/aggregate.js';
 import { matchResults } from '../docs/js/lib/match.js';
 
 const NL = String.fromCharCode(10);
@@ -189,5 +189,40 @@ describe('3章 購入済みの層', () => {
     ];
     const { byPostId } = matchResults(posts, []);
     assert.deepEqual(byPurchased(posts, byPostId).map((r) => r.key).sort(), ['未購入', '購入済み']);
+  });
+});
+
+describe('オリジナル写真の実績', () => {
+  const NL = String.fromCharCode(10);
+  const post = (patch) => ({ postId: 'p', itemNameRaw: 'n', criteria: [], hashtags: [], ...patch });
+
+  it('タグ行に無くても本文にあれば見つける', () => {
+    // 「写真あり #オリジナル写真」はタグ行と見なされず、タグとして拾えなかった
+    for (const text of [
+      ['ヘッダー', '本文', '#冷凍ストック #オリジナル写真'].join(NL),
+      ['ヘッダー', '写真は自分で撮りました #オリジナル写真', '本文'].join(NL),
+      ['ヘッダー', '本文', '写真あり #オリジナル写真'].join(NL),
+    ]) {
+      assert.equal(extractPostFeatures(text).hasOriginalPhotoTag, true, text);
+    }
+    assert.equal(extractPostFeatures(['ヘッダー', '本文', '#冷凍ストック'].join(NL)).hasOriginalPhotoTag, false);
+  });
+
+  it('実績は本人の申告を正とする（タグの有無では決めない）', () => {
+    // 写真は付けたがタグを書き忘れた投稿を「なし」に落とさない
+    const posts = [
+      post({ postId: 'a', usedOriginalPhoto: true, features: { hasOriginalPhotoTag: false } }),
+      post({ postId: 'b', usedOriginalPhoto: false, features: { hasOriginalPhotoTag: true }, itemNameRaw: 'x' }),
+    ];
+    const { byPostId } = matchResults(posts, []);
+    const rows = byOriginalPhoto(posts, byPostId);
+    assert.equal(rows.find((r) => r.key === 'オリジナル写真あり')?.posts, 1);
+    assert.equal(rows.find((r) => r.key === 'オリジナル写真なし')?.posts, 1);
+  });
+
+  it('申告が無い古い投稿はタグからの推測と分かるようにする', () => {
+    const posts = [post({ postId: 'a', features: { hasOriginalPhotoTag: true } })];
+    const { byPostId } = matchResults(posts, []);
+    assert.equal(byOriginalPhoto(posts, byPostId)[0].key, 'タグあり（申告なし）');
   });
 });

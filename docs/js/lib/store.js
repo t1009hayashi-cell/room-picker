@@ -77,6 +77,13 @@ function emptyState() {
      */
     criteriaOverride: {},
     /**
+     * 自分で撮った写真を使った商品（itemCode -> true）。
+     * **写真を付けたかどうかはROOM側の操作なので、アプリからは分からない。**
+     * 本文のタグから推測していたが、タグを付け忘れたり
+     * ROOM側で後から付けたりすると実績が落ちる。人に教えてもらう。
+     */
+    originalPhoto: {},
+    /**
      * 手動で足した商品（追加要件v1.3 5章）。候補一覧に出てこない商品を投稿したとき、
      * 記録が残らないと分析から漏れる（投稿の全件が揃わないと比率も平均も出せない）。
      */
@@ -215,6 +222,7 @@ function migrate(raw) {
     postLabels: migrateLabels(raw.postLabels),
     purchased: raw.purchased ?? {},
     criteriaOverride: raw.criteriaOverride ?? {},
+    originalPhoto: raw.originalPhoto ?? {},
     manualItems: Array.isArray(raw.manualItems) ? raw.manualItems : [],
     aiCopied: raw.aiCopied ?? {},
     // 分類方式v1（角度あり・7分類）で記録した投稿は名称の対応が取れない。
@@ -374,6 +382,18 @@ export function setPurchased(itemCode, on) {
 
 export function isPurchased(itemCode) {
   return Boolean(state.purchased?.[itemCode]);
+}
+
+/**
+ * 自分で撮った写真を使ったか。
+ * 実測では上位10件中6件が自前画像で、**上位表示の要因そのもの**とされている。
+ * 効果を測るには「使ったか」が正しく残っている必要がある。
+ */
+export function setOriginalPhoto(itemCode, on) {
+  update((s) => {
+    if (on) s.originalPhoto[itemCode] = true;
+    else delete s.originalPhoto[itemCode];
+  });
 }
 
 /**

@@ -101,8 +101,15 @@ export function extractPostFeatures(text) {
     /** 罫線で区切っているか */
     hasDivider: filled.some((l) => DIVIDER.test(l)),
     hasEmoji: EMOJI.test(body),
-    /** 自分で撮影した写真を使ったか。ランク条件かつ上位表示の要因とされている */
-    hasOriginalPhotoTag: hashtags.some((t) => t.includes('オリジナル写真')),
+    /**
+     * `#オリジナル写真` が本文にあるか。ランク条件かつ上位表示の要因とされている。
+     *
+     * **タグ行だけを見ない。** 「写真あり #オリジナル写真」のように文が混ざる行は
+     * タグ行と見なされず、タグとして拾えない。ここでは本文全体から探す。
+     * ただし**タグの有無＝写真を使ったかではない**（ROOM側で写真を付けても
+     * タグを書き忘れることがある）。実績は投稿ログの `usedOriginalPhoto` を正とする。
+     */
+    hasOriginalPhotoTag: /#\s*オリジナル写真/u.test(String(text ?? '')),
     /** 割引率・価格・容量などの数字を含むか */
     hasNumber: /\d/.test(body),
   };

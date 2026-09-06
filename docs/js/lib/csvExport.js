@@ -71,6 +71,8 @@ export const POST_COLUMNS = [
   { label: 'CTA', value: (p) => (p.features ? yesNo(p.features.hasCta) : '') },
   { label: '罫線', value: (p) => (p.features ? yesNo(p.features.hasDivider) : '') },
   { label: '絵文字', value: (p) => (p.features ? yesNo(p.features.hasEmoji) : '') },
+  // 本人の申告。タグの有無とは別の列にする（付け忘れと使っていないの区別が付かなくなるため）
+  { label: 'オリジナル写真を使った', value: (p) => (typeof p.usedOriginalPhoto === 'boolean' ? yesNo(p.usedOriginalPhoto) : '') },
   { label: 'オリジナル写真タグ', value: (p) => (p.features ? yesNo(p.features.hasOriginalPhotoTag) : '') },
   { label: 'ヘッダー本文', value: (p) => p.firstLine ?? '' },
   { label: 'ハッシュタグ', value: (p) => (p.hashtags ?? []).join(' ') },

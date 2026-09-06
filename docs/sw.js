@@ -26,7 +26,8 @@
 // v18: 手動追加した商品を投稿済みにできなかったのを修正（2026-08-25）
 // v19: 楽天アプリの共有テキストをそのまま貼れるようにした（2026-08-25）
 // v20: 投稿済みをその日基準に・選定基準の手動入力を廃止・作業の続きから開く（2026-09-06）
-const SHELL_VERSION = 'v20';
+// v21: オリジナル写真の実績をタグ推測から本人の申告に変えた（2026-09-06）
+const SHELL_VERSION = 'v21';
 const DATA_VERSION = 'v1';
 const SHELL_CACHE = `room-shell-${SHELL_VERSION}`;
 const DATA_CACHE = `room-data-${DATA_VERSION}`;

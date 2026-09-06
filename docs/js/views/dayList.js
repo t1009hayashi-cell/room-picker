@@ -395,6 +395,7 @@ const HEADER_TYPE_NOTES = {
 function postLabelHtml(item, state) {
   const code = item.itemCode;
   const purchased = Boolean(state.purchased?.[code]);
+  const photo = Boolean(state.originalPhoto?.[code]);
 
   // 過去に使ったタグを渡して、自分のコレクションタグを候補に残す
   const past = state.posts.flatMap((p) => p.hashtags ?? []);
@@ -417,7 +418,16 @@ function postLabelHtml(item, state) {
     </label>
     <p class="small muted" style="margin:2px 0 8px">
       購入済みにすると、URLをコピーしたときにAIへ「一人称の体験談を書いてよい」と伝える1行が付きます。
-      自分で撮った写真を使う場合は <strong>#${escapeHtml(ORIGINAL_PHOTO_TAG)}</strong> も付けてください。
+    </p>
+
+    <label class="postlabel__purchase">
+      <input type="checkbox" data-photo="${escapeHtml(code)}" ${photo ? 'checked' : ''} />
+      <span>自分で撮った写真を使う</span>
+    </label>
+    <p class="small muted" style="margin:2px 0 8px">
+      <strong>写真を付けたかどうかはROOM側の操作なので、アプリからは分かりません。</strong>
+      ここにチェックを入れたぶんだけが分析の「オリジナル写真あり」に入ります。
+      投稿には <strong>#${escapeHtml(ORIGINAL_PHOTO_TAG)}</strong> も付けてください（ランクの条件です）。
     </p>
 
     <p class="small muted" style="margin:10px 0 4px">
@@ -874,6 +884,11 @@ async function recordPost(root, dateKey, code, { text = null, openRoom = true } 
     labelVersion: LABEL_VERSION,
     /** 実際に買った商品か。体験談・オリジナル写真の効果を測るための層（3章） */
     purchased,
+    /**
+     * 自分で撮った写真を使ったか。**タグの有無ではなく本人の申告を正とする。**
+     * ROOM側で写真を付けてもタグを書き忘れると、タグ判定では実績が落ちる
+     */
+    usedOriginalPhoto: Boolean(state.originalPhoto?.[code]),
     // 実際に投稿した文章から機械的に測れる特徴（analytics の層に使う）
     features,
     firstLine,
@@ -890,8 +905,12 @@ async function recordPost(root, dateKey, code, { text = null, openRoom = true } 
 
   const warn = [];
   if (hashtags.length === 0) warn.push('ハッシュタグが本文から見つかりません');
-  if (purchased && !hashtags.some((tag) => tag.includes(ORIGINAL_PHOTO_TAG))) {
-    warn.push(`購入済みなら #${ORIGINAL_PHOTO_TAG} を付けてください`);
+  // 写真を使ったのにタグが無いとランクの条件を満たせない
+  if (state.originalPhoto?.[code] && !features.hasOriginalPhotoTag) {
+    warn.push(`#${ORIGINAL_PHOTO_TAG} が本文にありません（ランクの条件です）`);
+  }
+  if (purchased && !state.originalPhoto?.[code]) {
+    warn.push('購入済みなら写真を撮って「自分で撮った写真を使う」に印を付けてください');
   }
 
   if (openRoom) {
@@ -1113,6 +1132,14 @@ function bind(root, dateKey) {
       // 記録した日を持つ。投稿直後と1週間後で伸び方が違うため、いつの値かが要る
       store.addLikeCount(postId, Math.round(count), nowJstIso());
       toast('いいね数を記録しました');
+      renderDayList(root, dateKey);
+    });
+  });
+
+  root.querySelectorAll('[data-photo]').forEach((el) => {
+    el.addEventListener('change', () => {
+      store.setOriginalPhoto(el.dataset.photo, el.checked);
+      toast(el.checked ? '自分で撮った写真ありとして記録します' : '写真ありを外しました');
       renderDayList(root, dateKey);
     });
   });

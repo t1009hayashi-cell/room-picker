@@ -182,11 +182,30 @@ export function byLineLengthBand(posts, byPostId) {
   );
 }
 
-/** 文章の作りの有無で比べる（CTA・箇条書き・罫線・オリジナル写真） */
+/** 文章の作りの有無で比べる（CTA・箇条書き・罫線） */
 export function byFeatureFlag(posts, byPostId, flag, label) {
   return summarize(posts, byPostId, (post) => {
     if (!post.features) return UNSET;
     return post.features[flag] ? `${label}あり` : `${label}なし`;
+  });
+}
+
+/**
+ * オリジナル写真の有無（実測では上位表示の要因そのもの）。
+ *
+ * **本人の申告（`usedOriginalPhoto`）を正とする。**
+ * 写真を付けたかはROOM側の操作でアプリからは分からず、
+ * 本文の `#オリジナル写真` から推測すると、タグの付け忘れや
+ * ROOM側で後から付けた場合に実績が落ちる。
+ * 申告が無い古い投稿だけ、やむを得ずタグから推測する。
+ */
+export function byOriginalPhoto(posts, byPostId) {
+  return summarize(posts, byPostId, (post) => {
+    if (typeof post.usedOriginalPhoto === 'boolean') {
+      return post.usedOriginalPhoto ? 'オリジナル写真あり' : 'オリジナル写真なし';
+    }
+    if (!post.features) return UNSET;
+    return post.features.hasOriginalPhotoTag ? 'タグあり（申告なし）' : 'タグなし（申告なし）';
   });
 }
 

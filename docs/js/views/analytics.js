@@ -13,6 +13,7 @@ import {
   MIN_SAMPLE,
   buildRateSuggestions,
   buildThresholdSuggestions,
+  byOriginalPhoto,
   byPriceTier,
   byPurchased,
   excludeManualPosts,
@@ -201,8 +202,15 @@ export async function renderAnalytics(root) {
     <p class="small muted" style="margin:0 0 6px">上位ほど1行が短いという実測があります（1〜10位で21文字）。</p>
     ${summaryTable(byLineLengthBand(posts, byPostId), { label: '平均' })}
 
+    <h2>オリジナル写真</h2>
+    <p class="small muted" style="margin:0 0 6px">
+      実測では上位10件中6件が自前画像で、<strong>上位表示の要因そのもの</strong>とされています。
+      判定は商品カードの「自分で撮った写真を使う」の印です。
+      <strong>印を付けていない投稿は「なし」に入ります</strong>（写真を付けたかはROOM側の操作で、アプリからは分かりません）。
+    </p>
+    ${summaryTable(byOriginalPhoto(posts, byPostId), { label: '写真', likes: true })}
+
     <h2>文章の作り</h2>
-    ${summaryTable(byFeatureFlag(posts, byPostId, 'hasOriginalPhotoTag', 'オリジナル写真'), { label: '写真' })}
     ${summaryTable(byFeatureFlag(posts, byPostId, 'hasCta', 'CTA'), { label: 'CTA' })}
     ${summaryTable(byFeatureFlag(posts, byPostId, 'hasBullets', '箇条書き'), { label: '箇条書き' })}
     ${summaryTable(byFeatureFlag(posts, byPostId, 'hasDivider', '罫線'), { label: '罫線' })}

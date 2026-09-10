@@ -545,6 +545,24 @@ export function addPost(record) {
   });
 }
 
+/**
+ * 投稿ログを1件だけ消す（誤って作った重複の始末）。
+ *
+ * `undoPost` は「その日の投稿済みを取り消す」操作で、印も一緒に外す。
+ * こちらは**間違って増えた記録を消すだけ**なので、
+ * 同じ日に他の記録が残っていれば投稿済みの印は外さない。
+ */
+export function removePost(postId) {
+  update((s) => {
+    const target = s.posts.find((p) => p.postId === postId);
+    if (!target) return;
+    s.posts = s.posts.filter((p) => p.postId !== postId);
+    const key = dayItemKey(target.dateKey, target.itemCode);
+    const remains = s.posts.some((p) => dayItemKey(p.dateKey, p.itemCode) === key);
+    if (!remains) delete s.posted[key];
+  });
+}
+
 export function undoPost(dateKey, itemCode) {
   update((s) => {
     delete s.posted[dayItemKey(dateKey, itemCode)];

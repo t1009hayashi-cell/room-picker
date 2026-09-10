@@ -820,6 +820,16 @@ async function recordPost(root, dateKey, code, { text = null, openRoom = true } 
     return;
   }
 
+  // **同じ日・同じ商品の投稿ログを2件作らない。**
+  // 商品カードのボタン側では確認しているが、手動追加フォームの
+  // 「すでに投稿済みとして記録する」からは素通りで、2回追加すると2件できていた。
+  // 入口が増えてもここで必ず止まるよう、記録する側に置く。
+  if (store.isPosted(dateKey, code)) {
+    toast('この日はすでに投稿済みとして記録されています', 3200);
+    renderDayList(root, dateKey);
+    return;
+  }
+
   const raw = text ?? store.getComment(code) ?? '';
   store.setComment(code, raw);
 

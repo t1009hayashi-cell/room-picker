@@ -732,6 +732,16 @@ thead th {
   min-width: 0;
 }
 
+/* 同じ商品の記録が複数あるときの注意 */
+.likerow__dup {
+  color: var(--warn);
+}
+
+.likerow__del {
+  flex: 0 0 4em;
+  color: var(--danger);
+}
+
 /* ---- 選択ダイアログ ---- */
 .modal {
   position: fixed;

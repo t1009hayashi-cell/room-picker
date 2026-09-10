@@ -51,7 +51,7 @@ function matchesFilter(post) {
   return latest !== null && (daysSinceMeasured(post) ?? 0) >= 7;
 }
 
-function rowHtml(post) {
+function rowHtml(post, dupCount = 1) {
   const dateKey = postDateKey(post);
   const elapsed = daysSince(dateKey);
   const latest = store.latestLike(post);
@@ -78,6 +78,7 @@ function rowHtml(post) {
           ${escapeHtml(fmtDateShort(dateKey))}に投稿${elapsed === null ? '' : `・${elapsed}日前`}
           ${post.headerType ? `・${escapeHtml(post.headerType)}` : ''}
           ${post.purchased ? '・購入済み' : ''}
+          ${dupCount > 1 ? `<br><strong class="likerow__dup">同じ商品の記録が${dupCount}件あります</strong>` : ''}
         </p>
         ${history ? `<p class="small muted" style="margin:0">${escapeHtml(history)}</p>` : ''}
       </div>
@@ -89,6 +90,7 @@ function rowHtml(post) {
           ? `<a class="btn likerow__link" href="${escapeHtml(roomPostUrl(post.itemCode))}" target="_blank" rel="noopener noreferrer">ROOM</a>`
           : ''
       }
+      <button class="btn likerow__del" data-remove-post="${escapeHtml(post.postId)}" aria-label="この記録を消す">削除</button>
     </div>
   </div>`;
 }
@@ -113,6 +115,9 @@ export async function renderLikes(root) {
       };
     });
   const rows = all.filter(matchesFilter);
+  // 同じ商品の投稿ログが何件あるか。重複に気づけるようにする
+  const dupCount = new Map();
+  for (const p of all) dupCount.set(p.itemCode, (dupCount.get(p.itemCode) ?? 0) + 1);
 
   const unrecorded = all.filter((p) => store.latestLike(p) === null).length;
 
@@ -139,7 +144,7 @@ export async function renderLikes(root) {
               ? '投稿ログがまだありません。日別リストで「投稿済みにする」を押すとここに並びます。'
               : 'この条件に当てはまる投稿はありません。「すべて」に切り替えると全件出ます。'
           }</p>`
-        : rows.map(rowHtml).join('')
+        : rows.map((p) => rowHtml(p, dupCount.get(p.itemCode) ?? 1)).join('')
     }
 
     ${rows.length === 0 ? '' : '<button class="btn btn--primary btn--block" data-action="save-likes">まとめて記録</button>'}
@@ -152,6 +157,16 @@ function bind(root) {
   root.querySelectorAll('[data-filter]').forEach((el) => {
     el.addEventListener('click', () => {
       filter = el.dataset.filter;
+      renderLikes(root);
+    });
+  });
+
+  root.querySelectorAll('[data-remove-post]').forEach((el) => {
+    el.addEventListener('click', () => {
+      // 分析の基盤なので、確認なしでは消さない
+      if (!window.confirm('この投稿の記録を消します。いいね数の履歴も一緒に消えます。よろしいですか？')) return;
+      store.removePost(el.dataset.removePost);
+      toast('投稿の記録を1件消しました');
       renderLikes(root);
     });
   });

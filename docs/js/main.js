@@ -176,6 +176,8 @@ function hasFreshFocus(routeKey) {
 /** 画面を離れるときに位置を控える。iOSはPWAを黙って終了させるので pagehide でも保存する */
 function saveScroll() {
   if (currentRouteKey) store.setScrollPos(currentRouteKey, window.scrollY);
+  // 通常の保存は80ms待つ。画面を離れるときはその猶予が無いので書き切る
+  store.flush();
 }
 window.addEventListener('pagehide', saveScroll);
 document.addEventListener('visibilitychange', () => {

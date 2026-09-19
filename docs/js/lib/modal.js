@@ -15,7 +15,7 @@
  * 選択肢を1つ選んでもらう。選ばれた値、閉じられた場合は null を返す。
  * `options` は文字列の配列、または `{ value, label, note }` の配列。
  */
-export function chooseOne({ title, description = '', options, cancelLabel = 'やめる' }) {
+export function chooseOne({ title, description = '', options, cancelLabel = 'やめる', dismissOnBackdrop = true }) {
   return new Promise((resolve) => {
     const items = options.map((o) => (typeof o === 'string' ? { value: o, label: o } : o));
 
@@ -52,8 +52,10 @@ export function chooseOne({ title, description = '', options, cancelLabel = 'や
     };
 
     overlay.addEventListener('click', (event) => {
-      // 背景を押したときだけ閉じる。パネル内の空白では閉じない
-      if (event.target === overlay) close(null);
+      // 背景を押しても閉じない選択肢を持たせる。
+      // **必須の入力で背景タップ閉じを許すと、押しそこねただけで黙って何も起きない。**
+      // 実際に「投稿したのに投稿済みにならない」という形で現れた
+      if (dismissOnBackdrop && event.target === overlay) close(null);
       const option = event.target.closest('.modal__option');
       if (option) close(items[Number(option.dataset.index)].value);
       if (event.target.closest('.modal__cancel')) close(null);

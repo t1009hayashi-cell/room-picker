@@ -260,16 +260,31 @@ export function getState() {
 }
 
 let persistTimer = null;
+function write() {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(state));
+  } catch (err) {
+    console.error('ローカル状態の保存に失敗しました', err);
+    notifyError?.('保存に失敗しました。設定画面からエクスポートしてください');
+  }
+}
+
 function persist() {
   clearTimeout(persistTimer);
-  persistTimer = setTimeout(() => {
-    try {
-      localStorage.setItem(KEY, JSON.stringify(state));
-    } catch (err) {
-      console.error('ローカル状態の保存に失敗しました', err);
-      notifyError?.('保存に失敗しました。設定画面からエクスポートしてください');
-    }
-  }, 80);
+  persistTimer = setTimeout(write, 80);
+}
+
+/**
+ * 保存を待たずに書き切る。
+ *
+ * **通常の保存は80ms待つ。** その間はメモリにしかなく、
+ * iOSがPWAを止めるとそのぶんが消える。実際に「投稿したのに投稿済みにならない」
+ * という形で現れた（addPost の直後に読み直すと入っていないことを実測）。
+ * 投稿ログのように消えて困るものと、画面を離れるときは待たずに書く。
+ */
+export function flush() {
+  clearTimeout(persistTimer);
+  write();
 }
 
 let notifyError = null;
@@ -411,6 +426,7 @@ export function addLikeCount(postId, count, measuredAt = new Date().toISOString(
     if (!Array.isArray(post.likes)) post.likes = [];
     post.likes.push({ count, measuredAt });
   });
+  flush();
 }
 
 /**
@@ -436,6 +452,7 @@ export function addManualItem(item) {
     if (i >= 0) s.manualItems[i] = { ...s.manualItems[i], ...item };
     else s.manualItems.push(item);
   });
+  flush();
 }
 
 export function removeManualItem(itemCode) {
@@ -543,6 +560,8 @@ export function addPost(record) {
     delete s.reserved[key];
     s.posts.push(record);
   });
+  // 投稿ログは消えると取り返しがつかない。待たずに書く
+  flush();
 }
 
 /**
@@ -561,6 +580,7 @@ export function removePost(postId) {
     const remains = s.posts.some((p) => dayItemKey(p.dateKey, p.itemCode) === key);
     if (!remains) delete s.posted[key];
   });
+  flush();
 }
 
 export function undoPost(dateKey, itemCode) {
@@ -576,6 +596,7 @@ export function undoPost(dateKey, itemCode) {
       }
     }
   });
+  flush();
 }
 
 export function updateSettings(patch) {

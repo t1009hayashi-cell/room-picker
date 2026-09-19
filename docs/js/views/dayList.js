@@ -843,8 +843,12 @@ async function recordPost(root, dateKey, code, { text = null, openRoom = true } 
     description: firstLine === '' ? '（1行目が空です。分からなければ「判定不可」を選んでください）' : firstLine,
     options: HEADER_TYPES.map((v) => ({ value: v, label: v, note: HEADER_TYPE_NOTES[v] })),
     cancelLabel: 'まだ記録しない',
+    // 押しそこねて閉じると、投稿したのに記録が残らない。背景タップでは閉じない
+    dismissOnBackdrop: false,
   });
   if (headerType === null) {
+    // 黙って終わると「投稿済みにならない」ように見える。必ず知らせる
+    toast('記録していません。投稿済みにするには1行目の型を選んでください', 3600);
     renderDayList(root, dateKey);
     return;
   }

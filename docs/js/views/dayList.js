@@ -193,6 +193,20 @@ export async function renderDayList(root, dateKey) {
     state.settings.reachRatio,
   );
   const items = pooled.items;
+
+  /*
+   * 作業中の商品まで描いておく。
+   *
+   * 一覧は1度に PAGE_SIZE 件しか描かない。**その外にある商品は DOM に存在しない**ため、
+   * 「続きから開く」で来ても飛ぶ先が見つからず、黙って先頭に止まっていた。
+   * 位置が分かっているなら、そこまでのページを開いた状態で描く。
+   */
+  const focus = store.getFocus();
+  const focusIndex = focus?.dateKey === dateKey ? items.findIndex((x) => x.itemCode === focus.itemCode) : -1;
+  if (focusIndex >= visibleCount) {
+    visibleCount = Math.ceil((focusIndex + 1) / PAGE_SIZE) * PAGE_SIZE;
+  }
+
   const reservedCount = dayItems.filter((item) => state.reserved[store.dayItemKey(dateKey, item.itemCode)]).length;
   const otherDayPostedCount = dayItems.filter(
     (item) => store.postedOnOtherDays(postedIndex, item.itemCode, dateKey).length > 0,
@@ -244,6 +258,7 @@ export async function renderDayList(root, dateKey) {
             <a href="#/likes">すべての投稿を見る</a>（全期間・いいね数の記録もここから）</p>`
         : ''
     }
+    ${focusNotice(focus, focusIndex, dateKey, dayItems)}
     ${poolNotice(pooled, state.settings.reachRatio)}
     ${shopConcentrationNotice(items)}
     <div id="day-items">
@@ -279,6 +294,31 @@ function scrollToFocus(root, dateKey) {
   requestAnimationFrame(apply);
   setTimeout(apply, 150);
   setTimeout(apply, 450);
+}
+
+/**
+ * 作業中の商品が一覧に出せないときの案内。
+ *
+ * 「続きから開く」で来たのに何も起きないと、何が起きたのか分からない。
+ * 絞り込みで隠れているのか、その日から外れたのかを言い分ける。
+ */
+function focusNotice(focus, focusIndex, dateKey, dayItems) {
+  if (!focus || focus.dateKey !== dateKey || focusIndex >= 0) return '';
+  const name = focus.itemName ? toSearchQuery(focus.itemName, 24) : focus.itemCode;
+
+  // その日の候補にはあるが、絞り込みで落ちている
+  if (dayItems.some((x) => x.itemCode === focus.itemCode)) {
+    return `<div class="warnbar">
+      作業中の <strong>${escapeHtml(name)}</strong> は、いまの絞り込みで隠れています。
+      <button class="btn btn--ghost small" data-action="focus-clear-filters">絞り込みを外して表示</button>
+    </div>`;
+  }
+  // 投稿予定日は取得のたびに計算し直されるため、別の日に移ることがある
+  return `<div class="warnbar">
+    作業中の <strong>${escapeHtml(name)}</strong> は、この日の候補から外れました
+    （投稿予定日が変わったか、候補から落ちた可能性があります）。
+    <a href="#/likes">投稿一覧</a>で探すか、商品を選び直してください。
+  </div>`;
 }
 
 /**
@@ -1173,6 +1213,14 @@ function bind(root, dateKey) {
       toast(el.checked ? '「スーパーにない」に該当としました' : '「スーパーにない」を外しました');
       renderDayList(root, dateKey);
     });
+  });
+
+  root.querySelector('[data-action="focus-clear-filters"]')?.addEventListener('click', () => {
+    activeChips.clear();
+    statusId = 'all';
+    genreFilter = 'all';
+    showExcluded = false;
+    renderDayList(root, dateKey);
   });
 
   root.querySelector('[data-action="add-manual"]')?.addEventListener('click', () => {

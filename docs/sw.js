@@ -29,7 +29,8 @@
 // v21: オリジナル写真の実績をタグ推測から本人の申告に変えた（2026-09-06）
 // v22: 同じ日・同じ商品の投稿ログが2件できるのを止め、投稿一覧から消せるようにした（2026-09-10）
 // v23: 投稿ログを待たずに保存・分類ダイアログが黙って閉じるのを止めた（2026-09-19）
-const SHELL_VERSION = 'v23';
+// v24: 「続きから開く」で作業中の商品まで飛べるようにした（2026-09-22）
+const SHELL_VERSION = 'v24';
 const DATA_VERSION = 'v1';
 const SHELL_CACHE = `room-shell-${SHELL_VERSION}`;
 const DATA_CACHE = `room-data-${DATA_VERSION}`;

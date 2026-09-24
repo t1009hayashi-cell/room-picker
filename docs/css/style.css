@@ -703,6 +703,38 @@ thead th {
   line-height: 1.2;
 }
 
+/* 下書き一覧の操作ボタン。文字数が違うので幅を決めて潰れないようにする */
+.draftrow__actions {
+  display: grid;
+  grid-template-columns: 1fr 4.5em 4em;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.draftrow__actions > .btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  white-space: nowrap;
+}
+
+.draftrow__open {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+/* 下書き・予約への入口 */
+.draftbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  text-decoration: none;
+  color: var(--text);
+}
+
 /* ---- いいね一覧の商品画像 ---- */
 .likerow__top {
   display: flex;

@@ -56,6 +56,26 @@ function focusBanner() {
   </div>`;
 }
 
+/**
+ * 下書き・予約への入口。
+ *
+ * 予約を取り消すと予約の記録は消えるが投稿文は残る。
+ * その商品を日別リストから探し直すのは手間なので、まとめて見られる場所へ送る。
+ */
+function draftsBanner() {
+  const state = store.getState();
+  const postedIndex = store.buildPostedItemIndex(state.posts);
+  const drafts = Object.entries(state.comments ?? {}).filter(
+    ([code, text]) => String(text ?? '').trim() !== '' && !postedIndex.has(code),
+  ).length;
+  if (drafts === 0) return '';
+  const reserved = Object.keys(state.reserved ?? {}).length;
+  return `<a class="card draftbar" href="#/drafts">
+    <span class="small">下書き・予約 <strong>${drafts}件</strong>${reserved > 0 ? `（予約中 ${reserved}件）` : ''}</span>
+    <span class="small muted">まだ投稿していない商品を見る ›</span>
+  </a>`;
+}
+
 export async function renderCalendar(root) {
   initCursor();
   const state = store.getState();
@@ -123,6 +143,7 @@ export async function renderCalendar(root) {
 
   root.innerHTML = `
     ${focusBanner()}
+    ${draftsBanner()}
     <div class="chips" role="group" aria-label="表示モード">
       <button class="chip" data-mode="scheduled" aria-pressed="${mode === 'scheduled'}">投稿予定日</button>
       <button class="chip" data-mode="discovered" aria-pressed="${mode === 'discovered'}">発見日</button>

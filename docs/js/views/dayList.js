@@ -79,6 +79,11 @@ const STATUS_FILTERS = [
    * 全期間の投稿を見たいときは投稿一覧（#/likes）を使う。
    */
   { id: 'posted', label: 'この日の投稿済み', test: (ctx) => Boolean(ctx.state.posted[ctx.key]) },
+  /**
+   * 投稿文を書いた商品。**予約を取り消しても投稿文は残る**ので、
+   * 取り消したものをこの日の中から探し直すときの手がかりになる。
+   */
+  { id: 'draft', label: '下書きあり', test: (ctx) => String(ctx.state.comments?.[ctx.itemCode] ?? '').trim() !== '' },
 ];
 let statusId = 'all';
 
@@ -279,21 +284,40 @@ export async function renderDayList(root, dateKey) {
 
 /**
  * 作業中の商品までスクロールする。
+ *
  * 外部のAIから戻ってきたとき、一覧の先頭からその商品を探し直さずに済むようにする。
- * すでに画面内にあるときは動かさない（読んでいる位置を勝手に変えない）。
+ *
+ * **1回で決まらない。** 画像の読み込みで高さが後から変わるため、
+ * 位置が落ち着くまで何度か当て直す。
+ * その際は**毎回カードを引き直す**（描き直しで要素が入れ替わることがあり、
+ * 古い要素を掴んだままだと効かなかったり二重に動いたりする）。
+ * 実際、固定の時刻で3回当てる実装では狙いの2倍までスクロールしていた。
  */
+let focusScrollToken = 0;
 function scrollToFocus(root, dateKey) {
   const focus = store.getFocus();
   if (!focus || focus.dateKey !== dateKey) return;
-  const card = root.querySelector(`article.card[data-code="${CSS.escape(focus.itemCode)}"]`);
-  if (!card) return;
-  const box = card.getBoundingClientRect();
-  if (box.top >= 0 && box.top < window.innerHeight * 0.6) return;
-  // 画像などで高さが後から伸びるため、1度では狙った位置に止まらないことがある
-  const apply = () => card.scrollIntoView({ block: 'start' });
-  requestAnimationFrame(apply);
-  setTimeout(apply, 150);
-  setTimeout(apply, 450);
+
+  const token = ++focusScrollToken;
+  const deadline = Date.now() + 1200;
+
+  const step = () => {
+    // 新しい描画が始まっていたら、こちらの追従はやめる
+    if (token !== focusScrollToken) return;
+    const card = root.querySelector(`article.card[data-code="${CSS.escape(focus.itemCode)}"]`);
+    if (!card) return;
+
+    const top = card.getBoundingClientRect().top;
+    // 画面の上の方に来ていれば完了。少しの誤差で押し戻さない
+    if (Math.abs(top) <= 4) return;
+    window.scrollBy(0, top);
+
+    if (Date.now() < deadline) setTimeout(step, 120);
+  };
+
+  // requestAnimationFrame は画面が描画されていない状態だと呼ばれない。
+  // 確実に始めるためタイマーで起こす
+  setTimeout(step, 0);
 }
 
 /**

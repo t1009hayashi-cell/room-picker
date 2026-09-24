@@ -30,7 +30,8 @@
 // v22: 同じ日・同じ商品の投稿ログが2件できるのを止め、投稿一覧から消せるようにした（2026-09-10）
 // v23: 投稿ログを待たずに保存・分類ダイアログが黙って閉じるのを止めた（2026-09-19）
 // v24: 「続きから開く」で作業中の商品まで飛べるようにした（2026-09-22）
-const SHELL_VERSION = 'v24';
+// v25: 下書き・予約の一覧を追加（2026-09-24）
+const SHELL_VERSION = 'v25';
 const DATA_VERSION = 'v1';
 const SHELL_CACHE = `room-shell-${SHELL_VERSION}`;
 const DATA_CACHE = `room-data-${DATA_VERSION}`;
@@ -65,6 +66,7 @@ const SHELL_ASSETS = [
   './js/views/dayList.js',
   './js/views/analytics.js',
   './js/views/likes.js',
+  './js/views/drafts.js',
   './js/views/settings.js',
   './icons/icon-192.png',
   './icons/icon-512.png',

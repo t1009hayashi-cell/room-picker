@@ -518,6 +518,22 @@ export function findPost(dateKey, itemCode) {
   return posts.length === 0 ? null : posts[posts.length - 1];
 }
 
+/**
+ * その商品の下書きを消す（予約も一緒に取り消す）。
+ *
+ * 投稿文は商品ごと、予約は日付ごとに持っている。
+ * 下書きを消すのに予約だけ残ると、中身の無い予約が一覧に残り続ける。
+ */
+export function dropDraft(itemCode) {
+  update((s) => {
+    delete s.comments[itemCode];
+    for (const key of Object.keys(s.reserved)) {
+      if (key.slice(key.indexOf('|') + 1) === itemCode) delete s.reserved[key];
+    }
+  });
+  flush();
+}
+
 export function isReserved(dateKey, itemCode) {
   return Boolean(getState().reserved[dayItemKey(dateKey, itemCode)]);
 }

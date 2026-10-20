@@ -39,7 +39,7 @@ GitHub Secrets には次の3つが登録済み。
 | | 旧（仕様書の記述・使用不可） | 新（実装で採用） |
 |---|---|---|
 | ランキング | `app.rakuten.co.jp/services/api/IchibaItem/Ranking/20220601` | `openapi.rakuten.co.jp/`**`ichibaranking`**`/api/IchibaItem/Ranking/20220601` |
-| 検索 | `app.rakuten.co.jp/services/api/IchibaItem/Search/20220601` | `openapi.rakuten.co.jp/`**`ichibams`**`/api/IchibaItem/Search/20220601` |
+| 検索 | `app.rakuten.co.jp/services/api/IchibaItem/Search/20220601` | `openapi.rakuten.co.jp/`**`ichibams`**`/api/IchibaItem/Search/`**`20260701`** |
 | 認証 | `applicationId` のみ | `applicationId` **と** `accessKey` の両方が必須 |
 
 ### 切り分けの落とし穴
@@ -436,6 +436,42 @@ https://openapi.rakuten.co.jp/ichibagt/api/IchibaGenre/Search/20260701
 - 順位変動と違い**検索API由来の商品でも出せる**（順位を持たなくてよい）
 - 前日データが無ければ `null`。0件増と「分からない」を区別する
 - カードに `★4.75 / 3,187件 +120` の形で緑色表示。並び順に「レビュー増加順」を追加
+
+### 検索APIが2か月止まっていた（2026-10-20 に発覚）
+
+**症状**: 商品検索の取得が0件。候補がランキング由来だけになっていた。
+
+**原因**: 市場商品検索APIの **20220601 版が 2026-08-17 に廃止された。**
+認証は通るが `{"error_description":"API Configuration not found","error":"wrong_parameter"}` が返る。
+
+実データで裏付けた（`docs/data/*.json` の `source: 'search'` を数えた）。
+
+| 日 | ranking | search | warnings |
+|---|---|---|---|
+| 2026-08-16 | 180 | 161 | 0 |
+| 2026-08-17 | 180 | **156** | 0 |
+| 2026-08-18 | 180 | **0** | 6 |
+| 2026-09-24 | 659 | 0 | 22 |
+
+**同じ認証情報でランキングは動き続けている**ので、認証ではなくこのAPIの版の問題。
+コードは8/4以降変わっていない。
+
+**対処**:
+- `SEARCH_ENDPOINT` を `20260701` に更新。**ランキングは 20220601 のまま動いているので触らない**
+- 全ジャンルで検索が失敗したら**実行を失敗にする**（`src/index.ts`）。
+  これまで警告に積むだけで成功扱いだったため2か月気づけなかった。
+  1ジャンルの失敗は補助の取りこぼしなので止めない
+- 応答はあるのに1件も読めないときに警告を出す（`src/pipeline.ts`）。
+  版を上げて**レスポンスの形が変わると、エラーにならず黙って0件になる**ため
+
+> ⚠ **20260701 で正しく取れるかは、まだ実機で確認できていない。**
+> 認証情報は GitHub Secrets にあり、手元から本番のAPIを叩けない。
+> ダミーのIDでは版の違いの手前（403 Invalid Access Key）で止まり、切り分けられなかった。
+> **次回の daily-fetch の結果で確認すること。**
+> 失敗すれば上の変更により Actions が失敗して通知が届く。
+
+> ⚠ **ランキングAPIも 20220601 のまま。** いまは動いているが、同じように廃止されうる。
+> 楽天ウェブサービスのお知らせを定期的に見ること。
 
 ### 予約を取り消した商品を探し直せなかった（2026-09-24）
 

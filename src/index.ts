@@ -145,6 +145,24 @@ async function main(): Promise<void> {
   }
   log(`data/index.json: ${index.dates.length}日分`);
   if (warnings.length > 0) log(`警告 ${warnings.length}件:\n  - ${warnings.join('\n  - ')}`);
+
+  /*
+   * 検索APIが**全ジャンルで**落ちていたら実行を失敗にする。
+   *
+   * これまでは警告に積むだけで成功扱いだったため、
+   * 2026-08-17 に検索APIの旧版が廃止されてから2か月、誰も気づけなかった。
+   * 1ジャンルの失敗は補助の取りこぼしなので止めないが、全滅は仕組みの故障。
+   * 失敗にしておけば GitHub から通知が届く。
+   *
+   * データ自体はこの時点で書き出し済み。ランキング分だけでも残す。
+   */
+  const searched = snapshot.genres.filter((g) => g.searchOk !== undefined);
+  if (searched.length > 0 && searched.every((g) => g.searchOk === false)) {
+    throw new Error(
+      `検索APIが全${searched.length}ジャンルで失敗しました。APIの版が廃止された可能性があります` +
+        `（src/rakuten/client.ts の SEARCH_ENDPOINT を確認してください）`,
+    );
+  }
 }
 
 main().catch((err: unknown) => {

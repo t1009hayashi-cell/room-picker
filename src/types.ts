@@ -236,6 +236,12 @@ export interface GenreSnapshot {
   genreId: string;
   genreName: string;
   commissionRate: number;
+  /**
+   * 検索APIが応答したか。
+   * 検索は補助なので1ジャンルの失敗では止めないが、**全ジャンルで落ちていたら実行を失敗扱いにする。**
+   * 警告止まりにしていたため、APIの版が廃止されて2か月のあいだ気づけなかった。
+   */
+  searchOk?: boolean;
   /** レスポンスの title 検査（仕様書 4.1.1）で不一致だった場合の警告 */
   warnings: string[];
   items: NormalizedItem[];

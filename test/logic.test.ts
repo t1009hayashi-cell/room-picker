@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { describe, it } from 'node:test';
 import { evaluateExclusion } from '../src/filter.js';
 import { mergeByItemCode, normalizeItem, sortByRank, truncate } from '../src/normalize.js';
@@ -484,5 +485,27 @@ describe('前日比（仕様書 6.4）', () => {
   it('検索API由来は NEW 扱いにしない', () => {
     const index = buildPrevRankIndex(null);
     assert.deepEqual(calcRankDiff('a', null, 'search', index), { prevRank: null, rankChange: null, isNew: false });
+  });
+});
+
+describe('検索APIの版と失敗の扱い（2026-10-20 の障害）', () => {
+  it('検索APIは廃止されていない版を使う', async () => {
+    const src = await readFile(new URL('../../src/rakuten/client.ts', import.meta.url), 'utf-8');
+    // 20220601 は 2026-08-17 に廃止され、2か月ぶん検索が0件になった
+    assert.ok(
+      src.includes('IchibaItem/Search/20260701'),
+      '検索APIが現行版になっていない',
+    );
+    assert.ok(
+      !src.includes('IchibaItem/Search/20220601'),
+      '廃止済みの検索APIの版が残っている',
+    );
+  });
+
+  it('全ジャンルで検索が落ちたら実行を失敗にする', async () => {
+    const src = await readFile(new URL('../../src/index.ts', import.meta.url), 'utf-8');
+    // 警告止まりにしていたため、廃止から2か月のあいだ誰も気づけなかった
+    assert.ok(src.includes('searchOk === false'), '検索の全滅を検知していない');
+    assert.ok(/every\(\(g\) => g\.searchOk === false\)[\s\S]{0,200}throw new Error/.test(src), '全滅時に失敗させていない');
   });
 });

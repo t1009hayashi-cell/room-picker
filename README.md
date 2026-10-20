@@ -88,7 +88,7 @@ node --env-file=.env dist/src/index.js
 | | 旧（仕様書の記述） | 新（実装で採用） |
 |---|---|---|
 | ランキングAPI | `app.rakuten.co.jp/services/api/IchibaItem/Ranking/20220601` | `openapi.rakuten.co.jp/`**`ichibaranking`**`/api/IchibaItem/Ranking/20220601` |
-| 検索API | `app.rakuten.co.jp/services/api/IchibaItem/Search/20220601` | `openapi.rakuten.co.jp/`**`ichibams`**`/api/IchibaItem/Search/20220601` |
+| 検索API | `app.rakuten.co.jp/services/api/IchibaItem/Search/20220601` | `openapi.rakuten.co.jp/`**`ichibams`**`/api/IchibaItem/Search/`**`20260701`** |
 | 認証 | `applicationId` のみ | `applicationId` **と** `accessKey` の両方が必須 |
 
 **ランキングと検索でサービスパスが異なる**（`ichibaranking` / `ichibams`）点に注意。共通だと思って片方のパスを使い回すと 404 になる。

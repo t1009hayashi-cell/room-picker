@@ -164,11 +164,26 @@ export async function buildGenreSnapshot(
   );
 
   let searchItems: NormalizedBase[] = [];
+  let searchOk = false;
   try {
     const search = await options.fetcher.search(genre);
     searchItems = search.items
       .map((raw) => normalizeItem(raw, { ...normalizeCtx, source: 'search' }))
       .filter((item): item is NormalizedBase => item !== null);
+    searchOk = true;
+
+    /*
+     * 応答はあったのに1件も normalize できないのは、**レスポンスの形が変わった**しるし。
+     * 版を上げたときに項目名や構造が変わっていると、エラーにならず黙って0件になる。
+     * 0件のまま成功扱いにすると今回と同じく気づけないので、警告として残す。
+     */
+    if (search.items.length > 0 && searchItems.length === 0) {
+      const message =
+        `ジャンル「${genre.genreName}」: 検索APIは${search.items.length}件返したが、1件も読み取れなかった。` +
+        'レスポンスの形が変わった可能性がある（normalize.ts を確認すること）';
+      warnings.push(message);
+      log(`WARN ${message}`);
+    }
   } catch (err) {
     // 検索APIは母集団を広げるための補助。落ちてもランキング分は出す
     const message = `ジャンル「${genre.genreName}」: 検索APIの取得に失敗しました（${(err as Error).message}）`;
@@ -201,6 +216,8 @@ export async function buildGenreSnapshot(
     genreId: genre.genreId,
     genreName: genre.genreName,
     commissionRate: genre.commissionRate,
+    /** 検索APIが応答したか。全ジャンルで落ちていたら実行ごと失敗にする（通知を受け取るため） */
+    searchOk,
     warnings,
     items,
   };

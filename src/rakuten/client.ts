@@ -11,7 +11,18 @@ import type { RakutenRawItem, RakutenRawResponse } from '../types.js';
  *    「accessKey must be present as a query parameter or in the header」で 400 が返る
  */
 const RANKING_ENDPOINT = 'https://openapi.rakuten.co.jp/ichibaranking/api/IchibaItem/Ranking/20220601';
-const SEARCH_ENDPOINT = 'https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20220601';
+/**
+ * 市場商品検索API。**版は 20260701。**
+ *
+ * 旧 20220601 は 2026-08-17 に廃止された。認証は通るが
+ * `{"error_description":"API Configuration not found","error":"wrong_parameter"}` が返る。
+ * 実データでも 8/17 までは毎日150〜190件取れていて、8/18 から0件になっている
+ * （ランキングは同じ認証情報で動き続けていたので、認証ではなくこのAPIの版の問題）。
+ *
+ * ランキングは 20220601 のまま動いているので触らない。
+ * 版の廃止は事前に予告されるため、楽天ウェブサービスのお知らせを定期的に見ること。
+ */
+const SEARCH_ENDPOINT = 'https://openapi.rakuten.co.jp/ichibams/api/IchibaItem/Search/20260701';
 /**
  * ジャンル検索。サービスパスは ichibagt で、ランキング・検索のどちらとも違う。
  * 版は 20260701（公式ドキュメント記載の現行版）。

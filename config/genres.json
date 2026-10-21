@@ -2,8 +2,14 @@
   "_note": "commissionRate は API が affiliateRate を返さなかった場合のフォールバック値。API 値を常に優先する（仕様書 4.4）。",
   "genres": [
     {
-      "genreId": "100293",
-      "genreName": "パン・ジャム・シリアル",
+      "genreId": "558944",
+      "genreName": "キッチン用品・食器",
+      "commissionRate": 0.03,
+      "enabled": true
+    },
+    {
+      "genreId": "100256",
+      "genreName": "麺類",
       "commissionRate": 0.04,
       "enabled": true
     },
@@ -14,50 +20,8 @@
       "enabled": true
     },
     {
-      "genreId": "410901",
-      "genreName": "乾物",
-      "commissionRate": 0.04,
-      "enabled": true
-    },
-    {
-      "genreId": "100246",
-      "genreName": "フルーツ・果物",
-      "commissionRate": 0.04,
-      "enabled": true
-    },
-    {
-      "genreId": "407057",
-      "genreName": "弁当箱・水筒",
-      "commissionRate": 0.04,
-      "enabled": true
-    },
-    {
-      "genreId": "507779",
-      "genreName": "缶詰・瓶詰",
-      "commissionRate": 0.04,
-      "enabled": true
-    },
-    {
-      "genreId": "201085",
-      "genreName": "卵",
-      "commissionRate": 0.04,
-      "enabled": true
-    },
-    {
-      "genreId": "100356",
-      "genreName": "コーヒー",
-      "commissionRate": 0.04,
-      "enabled": true
-    },
-    {
-      "genreId": "200990",
-      "genreName": "野菜・きのこ",
-      "commissionRate": 0.04,
-      "enabled": true
-    },
-    {
-      "genreId": "100250",
-      "genreName": "漬物・梅干し・キムチ",
+      "genreId": "100268",
+      "genreName": "惣菜",
       "commissionRate": 0.04,
       "enabled": true
     },
@@ -68,14 +32,56 @@
       "enabled": true
     },
     {
+      "genreId": "100250",
+      "genreName": "漬物・梅干し・キムチ",
+      "commissionRate": 0.04,
+      "enabled": true
+    },
+    {
+      "genreId": "407057",
+      "genreName": "弁当箱・水筒",
+      "commissionRate": 0.04,
+      "enabled": true
+    },
+    {
+      "genreId": "201085",
+      "genreName": "卵",
+      "commissionRate": 0.04,
+      "enabled": true
+    },
+    {
+      "genreId": "100300",
+      "genreName": "調味料",
+      "commissionRate": 0.04,
+      "enabled": true
+    },
+    {
+      "genreId": "507779",
+      "genreName": "缶詰・瓶詰",
+      "commissionRate": 0.04,
+      "enabled": true
+    },
+    {
       "genreId": "410853",
       "genreName": "ドライフルーツ",
       "commissionRate": 0.04,
       "enabled": true
     },
     {
-      "genreId": "100316",
-      "genreName": "水・ソフトドリンク",
+      "genreId": "100246",
+      "genreName": "フルーツ・果物",
+      "commissionRate": 0.04,
+      "enabled": true
+    },
+    {
+      "genreId": "410901",
+      "genreName": "乾物",
+      "commissionRate": 0.04,
+      "enabled": true
+    },
+    {
+      "genreId": "100356",
+      "genreName": "コーヒー",
       "commissionRate": 0.04,
       "enabled": true
     },
@@ -92,20 +98,8 @@
       "enabled": true
     },
     {
-      "genreId": "101769",
-      "genreName": "その他",
-      "commissionRate": 0.04,
-      "enabled": true
-    },
-    {
-      "genreId": "100300",
-      "genreName": "調味料",
-      "commissionRate": 0.04,
-      "enabled": true
-    },
-    {
-      "genreId": "100268",
-      "genreName": "惣菜",
+      "genreId": "100236",
+      "genreName": "魚介類・水産加工品",
       "commissionRate": 0.04,
       "enabled": true
     },
@@ -116,20 +110,26 @@
       "enabled": true
     },
     {
-      "genreId": "100256",
-      "genreName": "麺類",
+      "genreId": "100316",
+      "genreName": "水・ソフトドリンク",
       "commissionRate": 0.04,
       "enabled": true
     },
     {
-      "genreId": "558944",
-      "genreName": "キッチン用品・食器",
-      "commissionRate": 0.03,
+      "genreId": "200990",
+      "genreName": "野菜・きのこ",
+      "commissionRate": 0.04,
       "enabled": true
     },
     {
-      "genreId": "100236",
-      "genreName": "魚介類・水産加工品",
+      "genreId": "101769",
+      "genreName": "その他",
+      "commissionRate": 0.04,
+      "enabled": true
+    },
+    {
+      "genreId": "100293",
+      "genreName": "パン・ジャム・シリアル",
       "commissionRate": 0.04,
       "enabled": true
     },
@@ -137,7 +137,7 @@
       "genreId": "215783",
       "genreName": "日用品雑貨・文房具・手芸",
       "commissionRate": 0.04,
-      "enabled": false
+      "enabled": true
     }
   ]
 }

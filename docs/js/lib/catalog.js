@@ -28,7 +28,13 @@ export function buildCatalog({ snapshots, sales, settings, schedule }) {
 
   const byScheduled = new Map();
   for (const item of latestByCode.values()) {
-    if (item.userExcluded) continue;
+    /*
+     * **除外品もここに入れる。**
+     * 以前はここで落としていたため、投稿予定日モードでは「除外も表示」を押しても
+     * 出しようがなかった（発見日モードでしか見られなかった）。
+     * 閾値が厳しすぎないかを確かめたいのは投稿予定日モードでも同じ。
+     * 隠すかどうかは見る側（日別リスト・カレンダー）で決める。
+     */
     const key = item.scheduledDate;
     if (!byScheduled.has(key)) byScheduled.set(key, []);
     byScheduled.get(key).push(item);

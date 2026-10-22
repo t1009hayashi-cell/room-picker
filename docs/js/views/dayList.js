@@ -84,6 +84,17 @@ const STATUS_FILTERS = [
    * 取り消したものをこの日の中から探し直すときの手がかりになる。
    */
   { id: 'draft', label: '下書きあり', test: (ctx) => String(ctx.state.comments?.[ctx.itemCode] ?? '').trim() !== '' },
+  /**
+   * まだ手を付けていない商品だけを出す。
+   * 投稿文を書いた商品・投稿済みの商品を隠して、**これから選ぶものだけ**を残す。
+   * 書いたものを探したいときは「下書きあり」や下書き・予約の一覧を使う。
+   */
+  {
+    id: 'untouched',
+    label: '未記入のみ',
+    test: (ctx) =>
+      String(ctx.state.comments?.[ctx.itemCode] ?? '').trim() === '' && !ctx.postedIndex.has(ctx.itemCode),
+  },
 ];
 let statusId = 'all';
 
@@ -155,13 +166,10 @@ let lastKey = null;
 function itemsForDate(dateKey) {
   const state = store.getState();
   const mode = state.settings.calendarMode;
-  const base =
-    mode === 'discovered'
-      ? (() => {
-          const all = app.catalog?.byDiscovered.get(dateKey) ?? [];
-          return showExcluded ? all : all.filter((item) => !item.userExcluded);
-        })()
-      : (app.catalog?.byScheduled.get(dateKey) ?? []);
+  // 除外品はどちらのモードでも「除外も表示」で出す。
+  // 隠すのは既定の動作であって、見られないことではない
+  const all = (mode === 'discovered' ? app.catalog?.byDiscovered.get(dateKey) : app.catalog?.byScheduled.get(dateKey)) ?? [];
+  const base = showExcluded ? all : all.filter((item) => !item.userExcluded);
 
   // 手動追加した商品は除外条件に関係なく必ず出す（追加要件v1.3 5.3）。
   // ユーザーが意図して選んだものなので、こちらの判断で上書きしない
@@ -223,10 +231,8 @@ export async function renderDayList(root, dateKey) {
   const chips = CHIP_FILTERS.map(
     (f) => `<button class="chip" data-chip="${f.id}" aria-pressed="${activeChips.has(f.id)}">${f.label}</button>`,
   ).join('');
-  const excludedChip =
-    mode === 'discovered'
-      ? `<button class="chip" data-chip="__excluded" aria-pressed="${showExcluded}">除外も表示</button>`
-      : '';
+  // 除外品は両方のモードで出せる（閾値が厳しすぎないかを確かめるため）
+  const excludedChip = `<button class="chip" data-chip="__excluded" aria-pressed="${showExcluded}">除外も表示</button>`;
 
   const sortOptions = SORTS.map(
     (s) => `<option value="${s.id}" ${s.id === sortId ? 'selected' : ''}>${s.label}</option>`,

@@ -32,7 +32,8 @@
 // v24: 「続きから開く」で作業中の商品まで飛べるようにした（2026-09-22）
 // v25: 下書き・予約の一覧を追加（2026-09-24）
 // v26: 未記入のみの絞り込みと、投稿予定日モードでの除外品表示（2026-10-22）
-const SHELL_VERSION = 'v26';
+// v27: 「さらに表示」で増えたぶんの先頭に送る（2026-10-26）
+const SHELL_VERSION = 'v27';
 const DATA_VERSION = 'v1';
 const SHELL_CACHE = `room-shell-${SHELL_VERSION}`;
 const DATA_CACHE = `room-data-${DATA_VERSION}`;

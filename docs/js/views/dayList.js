@@ -299,18 +299,27 @@ export async function renderDayList(root, dateKey) {
  * 古い要素を掴んだままだと効かなかったり二重に動いたりする）。
  * 実際、固定の時刻で3回当てる実装では狙いの2倍までスクロールしていた。
  */
-let focusScrollToken = 0;
-function scrollToFocus(root, dateKey) {
-  const focus = store.getFocus();
-  if (!focus || focus.dateKey !== dateKey) return;
+let scrollSettleToken = 0;
 
-  const token = ++focusScrollToken;
+/**
+ * 狙ったカードを画面の先頭に送る。
+ *
+ * **1回で決まらない。** 画像の読み込みで高さが後から変わるため、
+ * 位置が落ち着くまで何度か当て直す。
+ * その際は**毎回カードを引き直す**（描き直しで要素が入れ替わることがあり、
+ * 古い要素を掴んだままだと効かなかったり二重に動いたりする）。
+ * 実際、固定の時刻で3回当てる実装では狙いの2倍までスクロールしていた。
+ *
+ * `findCard` は毎回呼ばれる。見つからなければ何もしない。
+ */
+function settleScrollTo(findCard) {
+  const token = ++scrollSettleToken;
   const deadline = Date.now() + 1200;
 
   const step = () => {
-    // 新しい描画が始まっていたら、こちらの追従はやめる
-    if (token !== focusScrollToken) return;
-    const card = root.querySelector(`article.card[data-code="${CSS.escape(focus.itemCode)}"]`);
+    // 新しい描画や別の移動が始まっていたら、こちらの追従はやめる
+    if (token !== scrollSettleToken) return;
+    const card = findCard();
     if (!card) return;
 
     const top = card.getBoundingClientRect().top;
@@ -324,6 +333,24 @@ function scrollToFocus(root, dateKey) {
   // requestAnimationFrame は画面が描画されていない状態だと呼ばれない。
   // 確実に始めるためタイマーで起こす
   setTimeout(step, 0);
+}
+
+/**
+ * 作業中の商品までスクロールする。
+ * 外部のAIから戻ってきたとき、一覧の先頭からその商品を探し直さずに済むようにする。
+ */
+function scrollToFocus(root, dateKey) {
+  const focus = store.getFocus();
+  if (!focus || focus.dateKey !== dateKey) return;
+
+  const find = () => root.querySelector(`article.card[data-code="${CSS.escape(focus.itemCode)}"]`);
+  const card = find();
+  if (!card) return;
+  // すでに画面の上の方にあるなら動かさない（読んでいる位置を勝手に変えない）
+  const box = card.getBoundingClientRect();
+  if (box.top >= 0 && box.top < window.innerHeight * 0.6) return;
+
+  settleScrollTo(find);
 }
 
 /**
@@ -1079,10 +1106,20 @@ function bind(root, dateKey) {
     renderDayList(root, dateKey);
   });
 
-  root.querySelector('[data-more]')?.addEventListener('click', () => {
+  root.querySelector('[data-more]')?.addEventListener('click', async () => {
+    /*
+     * 押したら**増えたぶんの先頭**を画面の上に出す。
+     *
+     * 一覧は作り直しなので、スクロール位置がどうなるかはブラウザ任せになる。
+     * 高さが一瞬縮むと位置が切り詰められ、先頭に戻ってしまうことがある
+     * （「新しい項目がすぐに出ず、既存のものが上に出る」と報告された状態）。
+     * どこに居たかに関係なく、増えた先頭へ自分で送る。
+     */
+    const shownBefore = root.querySelectorAll('article.card').length;
     // 日付・モード・絞り込みは変わらないので lastKey は据え置き。visibleCount だけ伸ばす
     visibleCount += PAGE_SIZE;
-    renderDayList(root, dateKey);
+    await renderDayList(root, dateKey);
+    settleScrollTo(() => root.querySelectorAll('article.card')[shownBefore] ?? null);
   });
 
   root.querySelectorAll('[data-toggle-name]').forEach((el) => {

@@ -1,12 +1,12 @@
 {
-  "updatedAt": "2026-10-31T09:19:38+09:00",
+  "updatedAt": "2026-11-01T08:55:57+09:00",
   "sales": [
     {
       "id": "auto-202610300000-202611012359",
       "name": "セール期間（自動検出）",
       "start": "2026-10-30T00:00:00+09:00",
       "end": "2026-11-01T23:59:00+09:00",
-      "itemCount": 4,
+      "itemCount": 5,
       "source": "auto",
       "userLabel": null
     },
@@ -15,7 +15,7 @@
       "name": "セール期間（自動検出）",
       "start": "2026-11-01T00:00:00+09:00",
       "end": "2026-11-01T23:59:00+09:00",
-      "itemCount": 6,
+      "itemCount": 35,
       "source": "auto",
       "userLabel": null
     },
@@ -24,7 +24,7 @@
       "name": "セール期間（自動検出）",
       "start": "2026-11-04T20:00:00+09:00",
       "end": "2026-11-11T01:59:00+09:00",
-      "itemCount": 17,
+      "itemCount": 16,
       "source": "auto",
       "userLabel": null
     }
